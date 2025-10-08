@@ -7,18 +7,8 @@ import numpy as np
 np.random.seed(1)
 
 import argparse
-from model.digit5 import CNN, Classifier
-from model.amazon import AmazonMLP, AmazonClassifier
-from model.officecaltech10 import OfficeCaltechNet, OfficeCaltechClassifier
-from model.domainnet import DomainNet, DomainNetClassifier
-from datasets.DigitFive import digit5_dataset_read
-from datasets.AmazonReview import amazon_dataset_read
 from lib.utils.federated_utils import *
 from train.train import train, test
-from datasets.MiniDomainNet import get_mini_domainnet_dloader
-from datasets.OfficeCaltech10 import get_office_caltech10_dloader
-from datasets.DomainNet import get_domainnet_dloader
-from datasets.Office31 import get_office31_dloader
 from model.epickitchens import EpicKitchensTransformerEncoder, EpicKitchensTransformerClassifier
 from datasets.EpicKitchens import get_epic_dloader
 import os
@@ -75,174 +65,7 @@ def main(args=args, configs=configs):
     optimizer_schedulers = []
     classifier_optimizer_schedulers = []
     # build dataset
-    if configs["DataConfig"]["dataset"] == "DigitFive":
-        domains = ['mnistm', 'mnist', 'syn', 'usps', 'svhn']
-        # [0]: target dataset, target backbone, [1:-1]: source dataset, source backbone
-        # generate dataset for train and target
-        print("load target domain {}".format(args.target_domain))
-        target_train_dloader, target_test_dloader = digit5_dataset_read(args.base_path,
-                                                                        args.target_domain,
-                                                                        configs["TrainingConfig"]["batch_size"])
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        # generate CNN and Classifier for target domain
-        models.append(CNN(args.data_parallel).cuda())
-        classifiers.append(Classifier(args.data_parallel).cuda())
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        print("target domain {} loaded".format(args.target_domain))
-        # create DigitFive dataset
-        print("Source Domains :{}".format(domains))
-        for domain in domains:
-            # generate dataset for source domain
-            source_train_dloader, source_test_dloader = digit5_dataset_read(args.base_path, domain,
-                                                                            configs["TrainingConfig"]["batch_size"])
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            # generate CNN and Classifier for source domain
-            models.append(CNN(args.data_parallel).cuda())
-            classifiers.append(Classifier(args.data_parallel).cuda())
-            print("Domain {} Preprocess Finished".format(domain))
-        num_classes = 10
-    elif configs["DataConfig"]["dataset"] == "AmazonReview":
-        domains = ["books", "dvd", "electronics", "kitchen"]
-        print("load target domain {}".format(args.target_domain))
-        target_train_dloader, target_test_dloader = amazon_dataset_read(args.base_path,
-                                                                        args.target_domain,
-                                                                        configs["TrainingConfig"]["batch_size"])
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        # generate MLP and Classifier for target domain
-        models.append(AmazonMLP(args.data_parallel).cuda())
-        classifiers.append(AmazonClassifier(args.data_parallel).cuda())
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        print("target domain {} loaded".format(args.target_domain))
-        # create DigitFive dataset
-        print("Source Domains :{}".format(domains))
-        for domain in domains:
-            # generate dataset for source domain
-            source_train_dloader, source_test_dloader = amazon_dataset_read(args.base_path, domain,
-                                                                            configs["TrainingConfig"]["batch_size"])
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            # generate CNN and Classifier for source domain
-            models.append(AmazonMLP(args.data_parallel).cuda())
-            classifiers.append(AmazonClassifier(args.data_parallel).cuda())
-            print("Domain {} Preprocess Finished".format(domain))
-        num_classes = 2
-    elif configs["DataConfig"]["dataset"] == "OfficeCaltech10":
-        domains = ['amazon', 'webcam', 'dslr', "caltech"]
-        target_train_dloader, target_test_dloader = get_office_caltech10_dloader(args.base_path,
-                                                                                 args.target_domain,
-                                                                                 configs["TrainingConfig"]["batch_size"]
-                                                                                 , args.workers)
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        models.append(
-            OfficeCaltechNet(configs["ModelConfig"]["backbone"], bn_momentum=args.bn_momentum,
-                             pretrained=configs["ModelConfig"]["pretrained"],
-                             data_parallel=args.data_parallel).cuda())
-        classifiers.append(
-            OfficeCaltechClassifier(configs["ModelConfig"]["backbone"], 10, args.data_parallel).cuda()
-        )
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        for domain in domains:
-            source_train_dloader, source_test_dloader = get_office_caltech10_dloader(args.base_path, domain,
-                                                                                     configs["TrainingConfig"][
-                                                                                         "batch_size"], args.workers)
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            models.append(
-                OfficeCaltechNet(configs["ModelConfig"]["backbone"], args.bn_momentum,
-                                 pretrained=configs["ModelConfig"]["pretrained"],
-                                 data_parallel=args.data_parallel).cuda())
-            classifiers.append(
-                OfficeCaltechClassifier(configs["ModelConfig"]["backbone"], 10, args.data_parallel).cuda()
-            )
-        num_classes = 10
-    elif configs["DataConfig"]["dataset"] == "Office31":
-        domains = ['amazon', 'webcam', 'dslr']
-        target_train_dloader, target_test_dloader = get_office31_dloader(args.base_path,
-                                                                         args.target_domain,
-                                                                         configs["TrainingConfig"]["batch_size"],
-                                                                         args.workers)
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        models.append(
-            OfficeCaltechNet(configs["ModelConfig"]["backbone"], bn_momentum=args.bn_momentum,
-                             pretrained=configs["ModelConfig"]["pretrained"],
-                             data_parallel=args.data_parallel).cuda())
-        classifiers.append(
-            OfficeCaltechClassifier(configs["ModelConfig"]["backbone"], 31, args.data_parallel).cuda()
-        )
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        for domain in domains:
-            source_train_dloader, source_test_dloader = get_office31_dloader(args.base_path, domain,
-                                                                             configs["TrainingConfig"]["batch_size"],
-                                                                             args.workers)
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            models.append(
-                OfficeCaltechNet(configs["ModelConfig"]["backbone"], args.bn_momentum,
-                                 pretrained=configs["ModelConfig"]["pretrained"],
-                                 data_parallel=args.data_parallel).cuda())
-            classifiers.append(
-                OfficeCaltechClassifier(configs["ModelConfig"]["backbone"], 31, args.data_parallel).cuda()
-            )
-        num_classes = 31
-    elif configs["DataConfig"]["dataset"] == "MiniDomainNet":
-        domains = ['clipart', 'painting', 'real', 'sketch']
-        target_train_dloader, target_test_dloader = get_mini_domainnet_dloader(args.base_path, args.target_domain,
-                                                                               configs["TrainingConfig"]["batch_size"],
-                                                                               args.workers)
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        models.append(
-            DomainNet(configs["ModelConfig"]["backbone"], args.bn_momentum, configs["ModelConfig"]["pretrained"],
-                      args.data_parallel).cuda())
-        classifiers.append(DomainNetClassifier(configs["ModelConfig"]["backbone"], 126, args.data_parallel).cuda())
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        for domain in domains:
-            source_train_dloader, source_test_dloader = get_mini_domainnet_dloader(args.base_path, domain,
-                                                                                   configs["TrainingConfig"][
-                                                                                       "batch_size"], args.workers)
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            models.append(DomainNet(configs["ModelConfig"]["backbone"], args.bn_momentum,
-                                    pretrained=configs["ModelConfig"]["pretrained"],
-                                    data_parallel=args.data_parallel).cuda())
-            classifiers.append(DomainNetClassifier(configs["ModelConfig"]["backbone"], 126, args.data_parallel).cuda())
-        num_classes = 126
-    elif configs["DataConfig"]["dataset"] == "DomainNet":
-        domains = ['clipart', 'infograph', 'painting', 'quickdraw', 'real', 'sketch']
-        target_train_dloader, target_test_dloader = get_domainnet_dloader(args.base_path,
-                                                                          args.target_domain,
-                                                                          configs["TrainingConfig"]["batch_size"],
-                                                                          args.workers)
-        train_dloaders.append(target_train_dloader)
-        test_dloaders.append(target_test_dloader)
-        models.append(
-            DomainNet(configs["ModelConfig"]["backbone"], args.bn_momentum, configs["ModelConfig"]["pretrained"],
-                      args.data_parallel).cuda())
-        classifiers.append(DomainNetClassifier(configs["ModelConfig"]["backbone"], 345, args.data_parallel).cuda())
-        domains.remove(args.target_domain)
-        args.source_domains = domains
-        for domain in domains:
-            source_train_dloader, source_test_dloader = get_domainnet_dloader(args.base_path, domain,
-                                                                              configs["TrainingConfig"]["batch_size"],
-                                                                              args.workers)
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            models.append(DomainNet(configs["ModelConfig"]["backbone"], args.bn_momentum,
-                                    pretrained=configs["ModelConfig"]["pretrained"],
-                                    data_parallel=args.data_parallel).cuda())
-            classifiers.append(DomainNetClassifier(configs["ModelConfig"]["backbone"], 345, args.data_parallel).cuda())
-        num_classes = 345
-    elif configs["DataConfig"]["dataset"] == "EpicKitchens":
+    if configs["DataConfig"]["dataset"] == "EpicKitchens":
         domains = ['P01', 'P08'] # source domains
         target_train_dloader, target_test_dloader = get_epic_dloader(
             train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
@@ -259,6 +82,7 @@ def main(args=args, configs=configs):
             source_train_dloader, source_test_dloader = get_epic_dloader(
                 train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(domain),
                 test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(domain),
+                data_dir=configs["DataConfig"]["data_dir"],
                 batch_size=configs["TrainingConfig"]["batch_size"],
                 num_segments=configs["DataConfig"]["num_segments"],
                 num_workers=args.workers)
