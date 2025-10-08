@@ -19,6 +19,8 @@ from datasets.MiniDomainNet import get_mini_domainnet_dloader
 from datasets.OfficeCaltech10 import get_office_caltech10_dloader
 from datasets.DomainNet import get_domainnet_dloader
 from datasets.Office31 import get_office31_dloader
+from model.epickitchens import EpicKitchensTransformerEncoder, EpicKitchensTransformerClassifier
+from datasets.EpicKitchens import get_epic_dloader
 import os
 from os import path
 import shutil
@@ -28,7 +30,7 @@ import yaml
 parser = argparse.ArgumentParser(description='K3DA Official Implement')
 # Dataset Parameters
 parser.add_argument("--config", default="DigitFive.yaml")
-parser.add_argument('-bp', '--base-path', default="./")
+parser.add_argument('-bp', '--base-path', default="./") 
 parser.add_argument('--target-domain', type=str, help="The target domain we want to perform domain adaptation")
 parser.add_argument('--source-domains', type=str, nargs="+", help="The source domains we want to use")
 parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
@@ -240,6 +242,31 @@ def main(args=args, configs=configs):
                                     data_parallel=args.data_parallel).cuda())
             classifiers.append(DomainNetClassifier(configs["ModelConfig"]["backbone"], 345, args.data_parallel).cuda())
         num_classes = 345
+    elif configs["DataConfig"]["dataset"] == "EpicKitchens":
+        domains = ['P01', 'P08'] # source domains
+        target_train_dloader, target_test_dloader = get_epic_dloader(
+            train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
+            test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(args.target_domain),
+            batch_size=configs["TrainingConfig"]["batch_size"],
+            num_segments=configs["DataConfig"]["num_segments"],
+            num_workers=args.workers)
+        train_dloaders.append(target_train_dloader)
+        test_dloaders.append(target_test_dloader)
+        models.append(EpicKitchensTransformerEncoder(feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=args.data_parallel).cuda())
+        classifiers.append(EpicKitchensTransformerClassifier(backbone=configs["ModelConfig"]["backbone"], classes=8, data_parallel=args.data_parallel).cuda())
+        args.source_domains = domains
+        for domain in domains:
+            source_train_dloader, source_test_dloader = get_epic_dloader(
+                train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(domain),
+                test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(domain),
+                batch_size=configs["TrainingConfig"]["batch_size"],
+                num_segments=configs["DataConfig"]["num_segments"],
+                num_workers=args.workers)
+            train_dloaders.append(source_train_dloader)
+            test_dloaders.append(source_test_dloader)
+            models.append(EpicKitchensTransformerEncoder(feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=args.data_parallel).cuda())
+            classifiers.append(EpicKitchensTransformerClassifier(backbone=configs["ModelConfig"]["backbone"], classes=8, data_parallel=args.data_parallel).cuda())
+        num_classes = 8
     else:
         raise NotImplementedError("Dataset {} not implemented".format(configs["DataConfig"]["dataset"]))
     # federated learning step 1: initialize model with the same parameter (use target as standard)
@@ -266,8 +293,8 @@ def main(args=args, configs=configs):
             CosineAnnealingLR(classifier_optimizer, configs["TrainingConfig"]["total_epochs"],
                               eta_min=configs["TrainingConfig"]["learning_rate_end"]))
     # create the event to save log info
-    writer_log_dir = path.join(args.base_path, configs["DataConfig"]["dataset"], "runs",
-                               "train_time:{}".format(args.train_time) + "_" +
+    writer_log_dir = os.path.join(args.base_path, configs["DataConfig"]["dataset"], "runs",
+                               "train_time_{}".format(args.train_time) + "_" +
                                args.target_domain + "_" + "_".join(args.source_domains))
     print("create writer in {}".format(writer_log_dir))
     if os.path.exists(writer_log_dir):

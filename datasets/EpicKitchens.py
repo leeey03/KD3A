@@ -27,7 +27,6 @@ class EpicI3DDataset(Dataset):
         """
         self.num_segments = num_segments
         self.samples = []
-## TODO: FIX the directory parsing 
         # parse the txt file
         with open(list_file, "r") as f:
             for line in f:
@@ -73,6 +72,19 @@ def pad_collate(batch):
     feats = torch.stack(feats, dim=0)  # [B, num_segments, 2048]
     labels = torch.tensor(labels, dtype=torch.long)
     return feats, labels
+
+def get_epic_dloader(train_list, test_list, batch_size=32, num_segments=16, num_workers=4):
+    train_dataset = EpicI3DDataset(train_list, num_segments)
+    test_dataset  = EpicI3DDataset(test_list, num_segments)
+
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,
+                                            shuffle=True, num_workers=num_workers,
+                                            collate_fn=pad_collate)
+    test_loader  = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size,
+                                            shuffle=False, num_workers=num_workers,
+                                            collate_fn=pad_collate)
+    
+    return train_loader, test_loader
 
 if __name__ == "__main__":
     train_list = "data/frame_annotations_transVAE/list_P01_train.txt"

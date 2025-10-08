@@ -9,9 +9,11 @@ feature_dict = {"resnet18": 512, "resnet34": 512, "resnet50": 2048, "resnet101":
                 # adding i3d_trans feature dimension
                 "i3d_trans":512}
 
-class I3DTransformerEncoder(nn.Module):
-    def __init__(self, feat_dim=2048, hidden_dim=512, n_layers=2, n_heads=8, data_parallel=True): # check feat_dim
-        super(I3DTransformerEncoder, self).__init__()
+class EpicKitchensTransformerEncoder(nn.Module):
+    def __init__(self, feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=True):
+        # default feature hyperparameters follow TransferAttn Baseline model
+        # https://ieeexplore-ieee-org.libproxy1.nus.edu.sg/document/10944072/figures#figures
+        super(EpicKitchensTransformerEncoder, self).__init__()
         
         self.input_proj = nn.Linear(feat_dim, hidden_dim)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
@@ -45,9 +47,9 @@ class I3DTransformerEncoder(nn.Module):
         cls_out = self.norm(x[:, 0])  # [B, hidden_dim]
         return cls_out
 
-class I3DTransformerClassifier(nn.Module):
+class EpicKitchensTransformerClassifier(nn.Module):
     def __init__(self, backbone="i3d_trans", classes=8, data_parallel=True):
-        super(I3DTransformerClassifier, self).__init__()
+        super(EpicKitchensTransformerClassifier, self).__init__()
         linear = nn.Sequential()
         linear.add_module("fc", nn.Linear(feature_dict[backbone], classes))
         if data_parallel:
