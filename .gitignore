@@ -49988,3 +49988,9 @@ EpicKitchens/runs/train_time_3_P22_P22/events.out.tfevents.1761105772.LEEEY-ZEPH
 EpicKitchens/runs/train_time_4_P22_P08_P01/events.out.tfevents.1761116230.LEEEY-ZEPHYRUS.2548.0
 simpleBaseline.sif
 fedavgBaseline.sif
+data/frame_annotations_transVAE/list_P01_test.txt
+data/frame_annotations_transVAE/list_P01_train.txt
+data/frame_annotations_transVAE/list_P08_test.txt
+data/frame_annotations_transVAE/list_P08_train.txt
+data/frame_annotations_transVAE/list_P22_test.txt
+data/frame_annotations_transVAE/list_P22_train.txt
