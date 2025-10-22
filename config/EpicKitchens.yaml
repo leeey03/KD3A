@@ -1,6 +1,7 @@
 ---
 DataConfig:
   dataset: "EpicKitchens"
+  data_dir: "data"
   num_segments: 16
 
 ModelConfig:

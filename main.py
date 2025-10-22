@@ -15,6 +15,16 @@ import os
 from os import path
 import shutil
 import yaml
+import time
+
+# Only use F16 tensors like local GPU
+torch.backends.cuda.matmul.allow_tf32 = False      # full fp32
+torch.backends.cudnn.allow_tf32 = False
+# deteministic mode
+torch.manual_seed(42)
+torch.cuda.manual_seed_all(42)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # Default settings
 parser = argparse.ArgumentParser(description='K3DA Official Implement')
@@ -66,7 +76,8 @@ def main(args=args, configs=configs):
     classifier_optimizer_schedulers = []
     # build dataset
     if configs["DataConfig"]["dataset"] == "EpicKitchens":
-        domains = ['P01', 'P08'] # source domains
+        # [0]: target dataset, target backbone, [1:-1]: source dataset, source backbone
+        domains = ['P08', 'P01'] # source domains
         target_train_dloader, target_test_dloader = get_epic_dloader(
             train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
             test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(args.target_domain),
@@ -100,10 +111,13 @@ def main(args=args, configs=configs):
             source_weight[1].data = target_weight[1].data.clone()
     # create the optimizer for each model
     for model in models:
+        # check if model is using GPU
+        print(f"Model {model.name} device:", next(model.parameters()).device)
         optimizers.append(
             torch.optim.SGD(model.parameters(), momentum=args.momentum,
                             lr=configs["TrainingConfig"]["learning_rate_begin"], weight_decay=args.wd))
     for classifier in classifiers:
+        print(f"Classifier {classifier.name} device:", next(classifier.parameters()).device)
         classifier_optimizers.append(
             torch.optim.SGD(classifier.parameters(), momentum=args.momentum,
                             lr=configs["TrainingConfig"]["learning_rate_begin"], weight_decay=args.wd))
@@ -127,6 +141,12 @@ def main(args=args, configs=configs):
         if flag == "yes":
             shutil.rmtree(writer_log_dir, ignore_errors=True)
     writer = SummaryWriter(log_dir=writer_log_dir)
+    
+    # check for GPU availability
+    print(f"GPU Available: {torch.cuda.is_available()}\n")   # Should be True
+    print(f"GPU Device Count: {torch.cuda.device_count()}\n")   # Should be >= 1
+    print(f"GPU Device Name: {torch.cuda.get_device_name(0)}\n")  # Should print e.g. "A100" or "V100"
+
     # begin train
     print("Begin the {} time's training, Dataset:{}, Source Domains {}, Target Domain {}".format(args.train_time,
                                                                                                  configs[
@@ -137,6 +157,7 @@ def main(args=args, configs=configs):
 
     # create the initialized domain weight
     domain_weight = create_domain_weight(len(args.source_domains))
+    print("Initial domain weight {}".format(domain_weight))
     # adjust training strategy with communication round
     batch_per_epoch, total_epochs = decentralized_training_strategy(
         communication_rounds=configs["UMDAConfig"]["communication_rounds"],
@@ -144,37 +165,46 @@ def main(args=args, configs=configs):
         batch_size=configs["TrainingConfig"]["batch_size"],
         total_epochs=configs["TrainingConfig"]["total_epochs"])
     # train model
+    train_start_time = time.time()
     for epoch in range(args.start_epoch, total_epochs):
+        torch.cuda.reset_peak_memory_stats()
+        # epoch_start_mem = torch.cuda.memory_allocated() / 1024**2
+        epoch_start_time = time.time()
+        # include pytoch profiler
         domain_weight = train(train_dloaders, models, classifiers, optimizers,
-                              classifier_optimizers, epoch, writer, num_classes=num_classes,
-                              domain_weight=domain_weight, source_domains=args.source_domains,
-                              batch_per_epoch=batch_per_epoch, total_epochs=total_epochs,
-                              batchnorm_mmd=configs["UMDAConfig"]["batchnorm_mmd"],
-                              communication_rounds=configs["UMDAConfig"]["communication_rounds"],
-                              confidence_gate_begin=configs["UMDAConfig"]["confidence_gate_begin"],
-                              confidence_gate_end=configs["UMDAConfig"]["confidence_gate_end"],
-                              malicious_domain=configs["UMDAConfig"]["malicious"]["attack_domain"],
-                              attack_level=configs["UMDAConfig"]["malicious"]["attack_level"],
-                              mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"))
+                            classifier_optimizers, epoch, writer, num_classes=num_classes,
+                            domain_weight=domain_weight, source_domains=args.source_domains,
+                            batch_per_epoch=batch_per_epoch, total_epochs=total_epochs,
+                            batchnorm_mmd=configs["UMDAConfig"]["batchnorm_mmd"],
+                            communication_rounds=configs["UMDAConfig"]["communication_rounds"],
+                            confidence_gate_begin=configs["UMDAConfig"]["confidence_gate_begin"],
+                            confidence_gate_end=configs["UMDAConfig"]["confidence_gate_end"],
+                            malicious_domain=configs["UMDAConfig"]["malicious"]["attack_domain"],
+                            attack_level=configs["UMDAConfig"]["malicious"]["attack_level"],
+                            mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"))
         test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, epoch,
-             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10))
+            writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10))
         for scheduler in optimizer_schedulers:
-            scheduler.step(epoch)
+            scheduler.step()
         for scheduler in classifier_optimizer_schedulers:
-            scheduler.step(epoch)
+            scheduler.step()
         # save models every 10 epochs
         if (epoch + 1) % 10 == 0:
             # save target model with epoch, domain, model, optimizer
             save_checkpoint(
                 {"epoch": epoch + 1,
-                 "domain": args.target_domain,
-                 "backbone": models[0].state_dict(),
-                 "classifier": classifiers[0].state_dict(),
-                 "optimizer": optimizers[0].state_dict(),
-                 "classifier_optimizer": classifier_optimizers[0].state_dict()
-                 },
+                "domain": args.target_domain,
+                "backbone": models[0].state_dict(),
+                "classifier": classifiers[0].state_dict(),
+                "optimizer": optimizers[0].state_dict(),
+                "classifier_optimizer": classifier_optimizers[0].state_dict()
+                },
                 filename="{}.pth.tar".format(args.target_domain))
-
+        # peak_mem = torch.cuda.max_memory_allocated() / 1024**2
+        # end_mem = torch.cuda.memory_allocated() / 1024**2
+        # print(f"[GPU Memory] Epoch {epoch}: start={epoch_start_mem:.2f}MB, "f"end={end_mem:.2f}MB, peak={peak_mem:.2f}MB")
+        print(f"Training epoch {epoch} completed in {time.time() - epoch_start_time:.2f} seconds")
+    print("Total training time is {:.2f} hours".format((time.time() - train_start_time) / 3600))
 
 def save_checkpoint(state, filename):
     filefolder = "{}/{}/parameter/train_time:{}".format(args.base_path, configs["DataConfig"]["dataset"],

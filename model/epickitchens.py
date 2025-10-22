@@ -14,13 +14,12 @@ class EpicKitchensTransformerEncoder(nn.Module):
         # default feature hyperparameters follow TransferAttn Baseline model
         # https://ieeexplore-ieee-org.libproxy1.nus.edu.sg/document/10944072/figures#figures
         super(EpicKitchensTransformerEncoder, self).__init__()
-        
+        self.name = "epickitchens_transformer_encoder"
         self.input_proj = nn.Linear(feat_dim, hidden_dim)
         self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim*4, dropout=0.1
-        )
+            d_model=hidden_dim, nhead=n_heads, dim_feedforward=hidden_dim*4, dropout=0.1, batch_first=True)
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
         self.norm = nn.LayerNorm(hidden_dim)
 
@@ -38,10 +37,10 @@ class EpicKitchensTransformerEncoder(nn.Module):
         cls_tokens = self.cls_token.expand(B, -1, -1)   # [B, 1, hidden_dim]
         x = torch.cat([cls_tokens, x], dim=1)           # [B, T+1, hidden_dim]
 
-        # transformer expects [S, B, E]
-        x = x.transpose(0, 1)
+        # commented out if batch_first enabled: transformer expects [S, B, E]
+        # x = x.transpose(0, 1)
         x = self.transformer(x)
-        x = x.transpose(0, 1)
+        # x = x.transpose(0, 1)
 
         # return CLS embedding
         cls_out = self.norm(x[:, 0])  # [B, hidden_dim]
@@ -50,6 +49,7 @@ class EpicKitchensTransformerEncoder(nn.Module):
 class EpicKitchensTransformerClassifier(nn.Module):
     def __init__(self, backbone="i3d_trans", classes=8, data_parallel=True):
         super(EpicKitchensTransformerClassifier, self).__init__()
+        self.name = "epickitchens_transformer_classifier"
         linear = nn.Sequential()
         linear.add_module("fc", nn.Linear(feature_dict[backbone], classes))
         if data_parallel:
