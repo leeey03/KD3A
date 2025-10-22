@@ -6,18 +6,21 @@ from lib.utils.avgmeter import AverageMeter
 
 
 def train(train_dloaders, models, classifiers, optimizers, classifier_optimizers, epoch, writer,
-        source_domains, batch_per_epoch):
+        source_domains, batch_per_epoch, num_classes=126, top_5_accuracy=True):
     task_criterion = nn.CrossEntropyLoss().cuda()
     training_losses = AverageMeter()
-    # source doamain is index 1, target index 0
-    train_dloader = train_dloaders[1]
-    model = models[1]
-    classifier = classifiers[1]
-    optimizer = optimizers[1]
-    classifier_optimizer = classifier_optimizers[1]
+    # only one model for simple baseline
+    train_dloader = train_dloaders[0]
+    model = models[0]
+    classifier = classifiers[0]
+    optimizer = optimizers[0]
+    classifier_optimizer = classifier_optimizers[0]
 
     model.train()
     classifier.train()
+    # for acc calculation 
+    tmp_score = []
+    tmp_label = []
     for i, (image_s, label_s) in enumerate(train_dloader):
         if i >= batch_per_epoch:
             break
@@ -30,17 +33,44 @@ def train(train_dloaders, models, classifiers, optimizers, classifier_optimizers
         feature_s = model(image_s)
         output_s = classifier(feature_s)
         task_loss_s = task_criterion(output_s, label_s)
+        # get training acc and loss
         training_losses.update(float(task_loss_s.item()), image_s.size(0))
+        label_onehot_s = torch.zeros(label_s.size(0), num_classes).cuda().scatter_(1, label_s.view(-1, 1), 1)
+        tmp_score.append(torch.softmax(output_s, dim=1))
+        # turn label into one-hot code
+        tmp_label.append(label_onehot_s)
+        # backpropagation
         task_loss_s.backward()
         optimizer.step()
         classifier_optimizer.step()
 
-    writer.add_scalar(tag="Train/domain_{}_loss".format(source_domains[0]), scalar_value=training_losses.avg,
+    writer.add_scalar(tag="Train/source_domain_{}_loss".format(source_domains[0]), scalar_value=training_losses.avg,
                       global_step=epoch + 1)
+    tmp_score = torch.cat(tmp_score, dim=0).detach()
+    tmp_label = torch.cat(tmp_label, dim=0).detach()
+    _, y_true = torch.topk(tmp_label, k=1, dim=1)
+    if top_5_accuracy:
+        _, y_pred = torch.topk(tmp_score, k=5, dim=1)
+    else:
+        _, y_pred = torch.topk(tmp_score, k=1, dim=1)
+    top_1_accuracy_s = float(torch.sum(y_true == y_pred[:, :1]).item()) / y_true.size(0)
+    writer.add_scalar(tag="Train/source_domain_{}_accuracy_top1".format(source_domains[0]).format(source_domains[0]),
+                      scalar_value=top_1_accuracy_s,
+                      global_step=epoch + 1)
+    if top_5_accuracy:
+        top_5_accuracy_s = float(torch.sum(y_true == y_pred).item()) / y_true.size(0)
+        writer.add_scalar(tag="Train/source_domain_{}_accuracy_top5".format(source_domains[0]).format(source_domains[0]),
+                          scalar_value=top_5_accuracy_s,
+                          global_step=epoch + 1)
+        print("Source Domain Train {} Accuracy Top1 :{:.3f} Top5:{:.3f}".format(source_domains[0], top_1_accuracy_s,
+                                                                          top_5_accuracy_s))
+    else:
+        print("Source Domain Train {} Accuracy {:.3f}".format(source_domains[0], top_1_accuracy_s))
+
     
-def test(target_domain, source_domains, test_dloader_list, model_list, classifier_list, epoch, writer, num_classes=126,
+    
+def test(target_domain, test_dloader_list, model_list, classifier_list, epoch, writer, num_classes=126,
          top_5_accuracy=True):
-    source_domain_losses = [AverageMeter() for i in source_domains]
     target_domain_losses = AverageMeter()
     task_criterion = nn.CrossEntropyLoss().cuda()
     for model in model_list:
@@ -84,36 +114,4 @@ def test(target_domain, source_domains, test_dloader_list, model_list, classifie
                                                                           top_5_accuracy_t))
     else:
         print("Target Domain {} Accuracy {:.3f}".format(target_domain, top_1_accuracy_t))
-    # calculate loss, accuracy for source domains
-    for s_i, domain_s in enumerate(source_domains):
-        tmp_score = []
-        tmp_label = []
-        test_dloader_s = test_dloader_list[s_i + 1]
-        for _, (image_s, label_s) in enumerate(test_dloader_s):
-            image_s = image_s.cuda()
-            label_s = label_s.long().cuda()
-            with torch.no_grad():
-                output_s = classifier_list[s_i + 1](model_list[s_i + 1](image_s))
-            label_onehot_s = torch.zeros(label_s.size(0), num_classes).cuda().scatter_(1, label_s.view(-1, 1), 1)
-            task_loss_s = task_criterion(output_s, label_s)
-            source_domain_losses[s_i].update(float(task_loss_s.item()), image_s.size(0))
-            tmp_score.append(torch.softmax(output_s, dim=1))
-            # turn label into one-hot code
-            tmp_label.append(label_onehot_s)
-        writer.add_scalar(tag="Test/source_domain_{}_loss".format(domain_s), scalar_value=source_domain_losses[s_i].avg,
-                          global_step=epoch + 1)
-        tmp_score = torch.cat(tmp_score, dim=0).detach()
-        tmp_label = torch.cat(tmp_label, dim=0).detach()
-        _, y_true = torch.topk(tmp_label, k=1, dim=1)
-        if top_5_accuracy:
-            _, y_pred = torch.topk(tmp_score, k=5, dim=1)
-        else:
-            _, y_pred = torch.topk(tmp_score, k=1, dim=1)
-        top_1_accuracy_s = float(torch.sum(y_true == y_pred[:, :1]).item()) / y_true.size(0)
-        writer.add_scalar(tag="Test/source_domain_{}_accuracy_top1".format(domain_s), scalar_value=top_1_accuracy_s,
-                          global_step=epoch + 1)
-        print("Source Domain {} Accuracy {:.3f}".format(domain_s, top_1_accuracy_s))
-        if top_5_accuracy:
-            top_5_accuracy_s = float(torch.sum(y_true == y_pred).item()) / y_true.size(0)
-            writer.add_scalar(tag="Test/source_domain_{}_accuracy_top5".format(domain_s), scalar_value=top_5_accuracy_s,
-                              global_step=epoch + 1)
+    

@@ -1,0 +1,51 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+%labels
+    Author leeey03
+    Version 1.0
+    Description "PyTorch 2.8.0 (CUDA 12.4) training environment for reproducible simple baseline experiments"
+
+%files
+    # Copy only essential source files (you can adjust these paths)
+    requirements.txt /simple_baseline/requirements.txt
+    main_simple_baseline.py /simple_baseline/main_simple_baseline.py
+    model/epickitchens.py /simple_baseline/model/epickitchens.py
+    train/train_simple_baseline.py /simple_baseline/train/train_simple_baseline.py
+    datasets/EpicKitchens.py /simple_baseline/datasets/EpicKitchens.py
+    lib/utils/ /simple_baseline/lib/
+    config/EpicKitchens.yaml /simple_baseline/config/EpicKitchens.yaml
+    data/frame_annotations_transVAE/ /simple_baseline/data/
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export PYTHONPATH=/simple_baseline:$PYTHONPATH
+    export PATH=/opt/conda/bin:$PATH
+    export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9"  # multi-versions for more compatibility
+    export CUDA_VISIBLE_DEVICES=0
+
+%post
+    echo "Setting up container environment..."
+
+    # Update system and install useful tools
+    apt-get update && apt-get install -y \
+        git vim wget python3-pip && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Create workspace directory
+    mkdir -p /simple_baseline
+    cd /simple_baseline
+
+    # Install Python dependencies
+    pip install --upgrade pip setuptools wheel
+    pip install -r /simple_baseline/requirements.txt
+
+    # Optional: Jupyter & debugging tools for development
+    # pip install jupyterlab debugpy
+
+    echo "Environment setup complete."
+
+%runscript
+    echo "Running main script for simple_baseline..."
+    exec python /simple_baseline/main_simple_baseline.py --config EpicKitchens.yaml "$@"

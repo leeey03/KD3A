@@ -76,38 +76,21 @@ def main_simple_baseline(args=args, configs=configs):
     classifier_optimizer_schedulers = []
     # build dataset
     if configs["DataConfig"]["dataset"] == "EpicKitchens":
-        # [0]: target dataset, target backbone, [1:-1]: source dataset, source backbone
-        target_train_dloader, target_test_dloader = get_epic_dloader(
-            train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
+        # only 1 model for simple baseline 
+        domains = args.source_domains
+        source_train_dloader, target_test_dloader = get_epic_dloader(
+            train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(domains[0]), # only 1 source domain
             test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(args.target_domain),
             batch_size=configs["TrainingConfig"]["batch_size"],
             num_segments=configs["DataConfig"]["num_segments"],
             num_workers=args.workers)
-        train_dloaders.append(target_train_dloader)
+        train_dloaders.append(source_train_dloader)
         test_dloaders.append(target_test_dloader)
         models.append(EpicKitchensTransformerEncoder(feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=args.data_parallel).cuda())
         classifiers.append(EpicKitchensTransformerClassifier(backbone=configs["ModelConfig"]["backbone"], classes=8, data_parallel=args.data_parallel).cuda())
-        domains = args.source_domains
-        for domain in domains:
-            source_train_dloader, source_test_dloader = get_epic_dloader(
-                train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(domain),
-                test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(domain),
-                data_dir=configs["DataConfig"]["data_dir"],
-                batch_size=configs["TrainingConfig"]["batch_size"],
-                num_segments=configs["DataConfig"]["num_segments"],
-                num_workers=args.workers)
-            train_dloaders.append(source_train_dloader)
-            test_dloaders.append(source_test_dloader)
-            models.append(EpicKitchensTransformerEncoder(feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=args.data_parallel).cuda())
-            classifiers.append(EpicKitchensTransformerClassifier(backbone=configs["ModelConfig"]["backbone"], classes=8, data_parallel=args.data_parallel).cuda())
         num_classes = 8
     else:
         raise NotImplementedError("Dataset {} not implemented".format(configs["DataConfig"]["dataset"]))
-    # federated learning step 1: initialize model with the same parameter (use target as standard)
-    for model in models[1:]:
-        for source_weight, target_weight in zip(model.named_parameters(), models[0].named_parameters()):
-            # consistent parameters
-            source_weight[1].data = target_weight[1].data.clone()
     # create the optimizer for each model
     for model in models:
         # check if model is using GPU
@@ -166,11 +149,11 @@ def main_simple_baseline(args=args, configs=configs):
         torch.cuda.reset_peak_memory_stats()
         # epoch_start_mem = torch.cuda.memory_allocated() / 1024**2
         epoch_start_time = time.time()
-        # include pytoch profiler
+        # model is trained on input source domain and tested on the target domain 
         train(train_dloaders, models, classifiers, optimizers,
                     classifier_optimizers, epoch, writer, source_domains=args.source_domains,
-                    batch_per_epoch=batch_per_epoch)
-        test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, epoch,
+                    batch_per_epoch=batch_per_epoch, num_classes=num_classes, top_5_accuracy=(num_classes > 10))
+        test(args.target_domain, test_dloaders, models, classifiers, epoch,
             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10))
         for scheduler in optimizer_schedulers:
             scheduler.step()
@@ -192,7 +175,7 @@ def main_simple_baseline(args=args, configs=configs):
     print("Total training time is {:.2f} hours".format((time.time() - train_start_time) / 3600))
 
 def save_checkpoint(state, filename):
-    filefolder = "{}/{}/parameter/train_time:{}".format(args.base_path, configs["DataConfig"]["dataset"],
+    filefolder = "{}/{}/parameter/train_time_{}".format(args.base_path, configs["DataConfig"]["dataset"],
                                                         args.train_time)
     if not path.exists(filefolder):
         os.makedirs(filefolder)
