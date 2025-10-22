@@ -1,0 +1,51 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+%labels
+    Author leeey03
+    Version 1.0
+    Description "PyTorch 2.8.0 (CUDA 12.4) training environment for reproducible KD3A baseline experiments"
+
+%files
+    # Copy only essential source files (you can adjust these paths)
+    requirements.txt /KD3A_baseline/requirements.txt
+    main.py /KD3A_baseline/main.py
+    model/epickitchens.py /KD3A_baseline/model/epickitchens.py
+    train/train.py /KD3A_baseline/train/train.py
+    datasets/EpicKitchens.py /KD3A_baseline/datasets/EpicKitchens.py
+    lib/utils/ /KD3A_baseline/lib/
+    config/EpicKitchens.yaml /KD3A_baseline/config/EpicKitchens.yaml
+    data/frame_annotations_transVAE/ /KD3A_baseline/data/
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export PYTHONPATH=/KD3A_baseline:$PYTHONPATH
+    export PATH=/opt/conda/bin:$PATH
+    export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9"  # multi-versions for more compatibility
+    export CUDA_VISIBLE_DEVICES=0
+
+%post
+    echo "Setting up container environment..."
+
+    # Update system and install useful tools
+    apt-get update && apt-get install -y \
+        git vim wget python3-pip && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Create workspace directory
+    mkdir -p /KD3A_baseline
+    cd /KD3A_baseline
+
+    # Install Python dependencies
+    pip install --upgrade pip setuptools wheel
+    pip install -r /KD3A_baseline/requirements.txt
+
+    # Optional: Jupyter & debugging tools for development
+    # pip install jupyterlab debugpy
+
+    echo "Environment setup complete."
+
+%runscript
+    echo "Running main script..."
+    exec python /KD3A_baseline/main.py --config EpicKitchens.yaml --target-domain P22 "$@"
