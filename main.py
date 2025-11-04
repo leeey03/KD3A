@@ -76,8 +76,8 @@ def main(args=args, configs=configs):
     classifier_optimizer_schedulers = []
     # build dataset
     if configs["DataConfig"]["dataset"] == "EpicKitchens":
+        domains = args.source_domains  # source domains
         # [0]: target dataset, target backbone, [1:-1]: source dataset, source backbone
-        domains = ['P08', 'P01'] # source domains
         target_train_dloader, target_test_dloader = get_epic_dloader(
             train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
             test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(args.target_domain),
@@ -88,7 +88,7 @@ def main(args=args, configs=configs):
         test_dloaders.append(target_test_dloader)
         models.append(EpicKitchensTransformerEncoder(feat_dim=2048, hidden_dim=512, n_layers=4, n_heads=8, data_parallel=args.data_parallel).cuda())
         classifiers.append(EpicKitchensTransformerClassifier(backbone=configs["ModelConfig"]["backbone"], classes=8, data_parallel=args.data_parallel).cuda())
-        args.source_domains = domains
+        
         for domain in domains:
             source_train_dloader, source_test_dloader = get_epic_dloader(
                 train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(domain),

@@ -14,7 +14,6 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
     train/train.py /KD3A_baseline/train/train.py
     datasets/EpicKitchens.py /KD3A_baseline/datasets/EpicKitchens.py
     lib/utils/ /KD3A_baseline/lib/
-    config/EpicKitchens.yaml /KD3A_baseline/config/EpicKitchens.yaml
     data/frame_annotations_transVAE/ /KD3A_baseline/data/
 
 %environment
@@ -48,4 +47,4 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 
 %runscript
     echo "Running main script..."
-    exec python /KD3A_baseline/main.py --config EpicKitchens.yaml --target-domain P22 "$@"
+    exec python /KD3A_baseline/main.py "$@"

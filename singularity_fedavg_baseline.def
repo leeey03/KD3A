@@ -14,7 +14,6 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
     train/train_fedavg_baseline.py /fedavg_baseline/train/train_fedavg_baseline.py
     datasets/EpicKitchens.py /fedavg_baseline/datasets/EpicKitchens.py
     lib/utils/ /fedavg_baseline/lib/
-    config/EpicKitchens.yaml /fedavg_baseline/config/EpicKitchens.yaml
     data/frame_annotations_transVAE/ /fedavg_baseline/data/
 
 %environment
@@ -48,4 +47,4 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 
 %runscript
     echo "Running main script for fedavg_baseline..."
-    exec python /fedavg_baseline/main_fedavg_baseline.py --config EpicKitchens.yaml "$@"
+    exec python /fedavg_baseline/main_fedavg_baseline.py "$@"
