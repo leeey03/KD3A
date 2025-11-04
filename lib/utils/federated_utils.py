@@ -114,3 +114,55 @@ def decentralized_training_strategy(communication_rounds, epoch_samples, batch_s
         raise NotImplementedError(
             "The communication round {} illegal, should be 0.2 or 0.5".format(communication_rounds))
     return batch_per_epoch, total_epochs
+
+## below functions are generated with AI
+def gaussian_kernel(x, y, var=1.0):
+    # Calculate the RBF kernel matrix
+    # Based on the formula: k(x,y) = exp(-||x-y||^2 / (2*sigma^2))
+    # where sigma^2 = var
+    
+    # Expand dimensions for pairwise difference
+    x_expand = x.unsqueeze(1) # [B, 1, D]
+    y_expand = y.unsqueeze(0) # [1, B, D]
+    
+    # Calculate pairwise squared distances
+    distances = torch.sum((x_expand - y_expand)**2, dim=2) # [B, B]
+    
+    # Apply kernel function
+    kernel = torch.exp(-distances / (2 * var))
+    return kernel
+
+def mmd_loss(x, y, var=1.0):
+    """
+    Compute the unbiased MMD^2 loss between two sets of samples x and y.
+    Supports different batch sizes.
+    
+    Args:
+        x: Tensor of shape [m, d]
+        y: Tensor of shape [n, d]
+        var: Kernel variance (sigma^2)
+    Returns:
+        Scalar tensor representing MMD^2 value.
+    """
+    m = x.size(0)
+    n = y.size(0)
+
+    # Compute kernel matrices
+    k_xx = gaussian_kernel(x, x, var)
+    k_yy = gaussian_kernel(y, y, var)
+    k_xy = gaussian_kernel(x, y, var)
+
+    # Remove diagonal for unbiased estimate (self-similarity)
+    # Only valid if m>1 and n>1
+    if m > 1:
+        k_xx = k_xx - torch.diag(torch.diag(k_xx))
+    if n > 1:
+        k_yy = k_yy - torch.diag(torch.diag(k_yy))
+
+    # Compute unbiased MMD^2 with different sample sizes
+    term_xx = k_xx.sum() / (m * (m - 1)) if m > 1 else 0
+    term_yy = k_yy.sum() / (n * (n - 1)) if n > 1 else 0
+    term_xy = k_xy.sum() / (m * n)
+    
+    mmd2 = term_xx + term_yy - 2 * term_xy
+    return mmd2
