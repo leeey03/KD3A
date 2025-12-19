@@ -63,6 +63,29 @@ def knowledge_vote(knowledge_list, confidence_gate, num_classes):
                                                                                                     -1, 1), 1)
     return consensus_knowledge_conf, consensus_knowledge, consensus_knowledge_mask
 
+def knowledge_vote_multiscale(knowledge_list, confidence_gate, num_classes):
+    """
+    :param torch.tensor knowledge_list : recording the knowledge from each source domain model
+    :param float confidence_gate: the confidence gate to judge which sample to use
+    :return: consensus_confidence,consensus_knowledge,consensus_knowledge_weight
+    """
+    max_p, max_p_class = knowledge_list.max(2)
+    max_conf, _ = max_p.max(1)
+    max_p_mask = (max_p > confidence_gate).float().cuda()
+    consensus_knowledge = torch.zeros(knowledge_list.size(0), knowledge_list.size(2)).cuda()
+    for batch_idx, (p, p_class, p_mask) in enumerate(zip(max_p, max_p_class, max_p_mask)):
+        # to solve the [0,0,0] situation
+        if torch.sum(p_mask) > 0:
+            p = p * p_mask
+        for source_idx, source_class in enumerate(p_class):
+            consensus_knowledge[batch_idx, source_class] += p[source_idx]
+    consensus_knowledge_conf, consensus_knowledge = consensus_knowledge.max(1)
+    # consensus_knowledge_mask returns batch samples that pass confidence gate
+    consensus_knowledge_mask = (max_conf > confidence_gate).float().cuda()
+    consensus_knowledge = torch.zeros(consensus_knowledge.size(0), num_classes).cuda().scatter_(1,
+                                                                                                consensus_knowledge.view(
+                                                                                                    -1, 1), 1)
+    return consensus_knowledge_conf, consensus_knowledge, consensus_knowledge_mask, max_p_mask
 
 def calculate_consensus_focus(consensus_focus_dict, knowledge_list, confidence_gate, source_domain_numbers,
                               num_classes):
@@ -85,13 +108,65 @@ def calculate_consensus_focus(consensus_focus_dict, knowledge_list, confidence_g
     for permutation in permutation_list:
         permutation = list(permutation)
         for source_idx in range(source_domain_numbers):
-            consensus_focus_dict[source_idx + 1] += (
-                                                            domain_contribution[frozenset(
-                                                                permutation[:permutation.index(source_idx) + 1])]
-                                                            - domain_contribution[
-                                                                frozenset(permutation[:permutation.index(source_idx)])]
+            consensus_focus_dict[source_idx + 1] += (domain_contribution[frozenset(permutation[:permutation.index(source_idx) + 1])]
+                                                    - domain_contribution[frozenset(permutation[:permutation.index(source_idx)])]
                                                     ) / permutation_num
     return consensus_focus_dict
+
+def calculate_multiscale_consensus_focus(consensus_focus_dict, knowledge_list, confidence_gate, source_domain_numbers, num_scales=4):
+    """
+    modified calculate_consensus_focus to handle multi-scale knowledge. 
+    Performs per scale knowledge vote then aggregates per source. Returns consensus_focus_dict with same struture as original
+    """
+    B, N, C = knowledge_list.shape
+    domain_contribution = {frozenset(): 0.0}
+    for combination_num in range(1, source_domain_numbers + 1):
+        for combination in combinations(range(source_domain_numbers), combination_num):
+            # get all scale indices for selected combination
+            flat_indices = [] 
+            for src in combination:
+                flat_indices.extend([src * num_scales + s for s in range(num_scales)])
+            # knowledge vote over all scales within selected combination
+            consensus_conf, _, consensus_mask = knowledge_vote(knowledge_list[:, flat_indices, :], confidence_gate, C)
+            # aggregate scale contributions per source 
+            mask = consensus_mask.view(B, len(combination), num_scales)  
+            conf = consensus_conf.unsqueeze(-1).expand_as(mask)
+            contribution = torch.sum(conf * mask).item()
+            domain_contribution[frozenset(combination)] = contribution
+    permutation_list = list(permutations(range(source_domain_numbers), source_domain_numbers))
+    permutation_num = len(permutation_list)
+    for permutation in permutation_list:
+        permutation = list(permutation)
+        for source_idx in range(source_domain_numbers):
+            consensus_focus_dict[source_idx + 1] += (domain_contribution[frozenset(permutation[:permutation.index(source_idx) + 1])]
+                                                    - domain_contribution[frozenset(permutation[:permutation.index(source_idx)])]
+                                                    ) / permutation_num
+    return consensus_focus_dict
+
+def calculate_temporal_consistency(knowledge_list, source_domain_num, num_scales=4):
+    """
+    Calculate temporal (cross-scale) consistency per source.
+    """
+
+    B, _, C = knowledge_list.shape
+    temporal_consistency_dict = {i + 1: 0.0 for i in range(source_domain_num)}
+
+    # Convert probabilities to hard predictions
+    preds = knowledge_list.argmax(dim=-1)  # [B, M*S]
+
+    for src_idx in range(source_domain_num):
+        start = src_idx * num_scales
+        end = start + num_scales
+
+        # [B, S]
+        src_preds = preds[:, start:end]
+
+        # Pairwise agreement across scales
+        for s1, s2 in combinations(range(num_scales), 2):
+            agreement = (src_preds[:, s1] == src_preds[:, s2]).float()
+            temporal_consistency_dict[src_idx + 1] += agreement.sum().item()
+
+    return temporal_consistency_dict
 
 
 def decentralized_training_strategy(communication_rounds, epoch_samples, batch_size, total_epochs):
@@ -166,3 +241,10 @@ def mmd_loss(x, y, var=1.0):
     
     mmd2 = term_xx + term_yy - 2 * term_xy
     return mmd2
+
+def get_multiscale_classification_loss(output, label, criterion):
+    """
+    Return average classification loss across all scales
+    """
+    return (criterion(output['final'], label) + criterion(output['scale1'], label) 
+            + criterion(output['scale2'], label) + criterion(output['scale4'], label)) / 4

@@ -30,11 +30,12 @@ class EpicI3DDataset(Dataset):
         # Similar to TranSVAE, a temporal window is constructed for each frame using previous 7 frames, the current frame and the next 8 frames
         # zero padding is used for the start and end of the video
 
-        half_window = int(self.num_segments - 1) # should be 7
+        half_window = int(self.num_segments // 2 - 1) # should be 7
         total_window = self.num_segments  # should be 16
         zero_count = 0
         loaded_count = 0
         feat_list = []
+        feat_path = ""
         for i in range(frame_idx - half_window, frame_idx + (total_window - half_window)):
             if i < 1:
             # pad with zeros for frames before the start
