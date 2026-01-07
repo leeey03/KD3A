@@ -115,16 +115,43 @@ class ClassificationHead(nn.Module):
 
 
 class FusionHead(nn.Module):
-    """Ensemble fusion head with learnable weights."""
-    def __init__(self, num_scales: int, classes: int):
+    """Ensemble fusion head that concatenates scale features before classification."""
+    def __init__(self, d_model: int, classes: int, dropout: float = 0.1):
         super().__init__()
-        self.scale_weights = nn.Parameter(torch.ones(num_scales))
+        self.norm = nn.LayerNorm(d_model)
+        self.dropout = nn.Dropout(dropout)
+        # Global average pooling to aggregate temporal dimension
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        # Classification layer for concatenated features (3 scales * d_model)
+        self.fc = nn.Linear(d_model * 3, classes)
     
-    def forward(self, logits_list: List[torch.Tensor]) -> torch.Tensor:
-        # logits_list: list of [B, classes]
-        weights = F.softmax(self.scale_weights, dim=0)
-        fused_logits = sum(w * logits for w, logits in zip(weights, logits_list))
-        return fused_logits
+    def forward(self, feat_list: List[torch.Tensor]) -> torch.Tensor:
+        """
+        Fuse features from multiple scales via concatenation and classify.
+        
+        Args:
+            feat_list: List of feature tensors from each scale [B, T_i, D]
+        
+        Returns:
+            Fused logits [B, classes]
+        """
+        # Global average pool each scale's features to [B, D]
+        pooled_feats = []
+        for feat in feat_list:
+            # feat: [B, T_i, D]
+            feat_norm = self.norm(feat)
+            feat_transposed = feat_norm.transpose(1, 2)  # [B, D, T_i]
+            pooled = self.global_pool(feat_transposed).squeeze(-1)  # [B, D]
+            pooled_feats.append(pooled)
+        
+        # Concatenate the pooled features across scales
+        fused_feats = torch.cat(pooled_feats, dim=1)  # [B, D*3]
+        
+        # Classification
+        fused_feats = self.dropout(fused_feats)
+        logits = self.fc(fused_feats)  # [B, classes]
+        
+        return logits
 
 
 class MultiScaleTemporalTransformer(nn.Module):
@@ -184,7 +211,7 @@ class MultiScaleTemporalTransformer(nn.Module):
         self.head_scale4 = ClassificationHead(d_model, classes, dropout)
         
         # Ensemble fusion head
-        self.fusion_head = FusionHead(num_scales=3, classes=classes)
+        self.fusion_head = FusionHead(d_model, classes, dropout)
     
     def forward(self, x: torch.Tensor, 
                 return_all_scales: bool = True) -> torch.Tensor:
@@ -236,8 +263,8 @@ class MultiScaleTemporalTransformer(nn.Module):
         logits_scale2 = self.head_scale2(feat_scale2)  # [B, classes]
         logits_scale4 = self.head_scale4(feat_scale4)  # [B, classes]
         
-        # Ensemble fusion
-        logits_final = self.fusion_head([logits_scale1, logits_scale2, logits_scale4])
+        # Ensemble fusion of features 
+        logits_final = self.fusion_head([feat_scale1, feat_scale2, feat_scale4])
         
         if return_all_scales:
             return {

@@ -123,7 +123,7 @@ def main(args=args, configs=configs):
     # create the optimizer for each model
     for model in models:
         # check if model is using GPU
-        print(f"Model {model.name} device:", next(model.parameters()).device)
+        print(f"Model {model.module.name if isinstance(model, nn.DataParallel) else model.name} device:", next(model.parameters()).device)
         optimizers.append(
             torch.optim.SGD(model.parameters(), momentum=args.momentum,
                             lr=configs["TrainingConfig"]["learning_rate_begin"], weight_decay=args.wd))
