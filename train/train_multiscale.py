@@ -7,7 +7,8 @@ from lib.utils.avgmeter import AverageMeter
 
 def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
           num_classes, domain_weight, source_domains, batchnorm_mmd, batch_per_epoch, confidence_gate_begin,
-          confidence_gate_end, communication_rounds, total_epochs, malicious_domain, attack_level, tau=0.6, mix_aug=True):
+          confidence_gate_end, communication_rounds, total_epochs, malicious_domain, attack_level, tau=0.6, mix_aug=True, get_KL_values=False, get_pseudolabel_acc=False):
+    scale_names=['final', 'scale1', 'scale2', 'scale4']
     task_criterion = nn.CrossEntropyLoss().cuda()
     source_domain_num = len(train_dloader_list[1:])
     for model in model_list:
@@ -57,6 +58,23 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
     target_weight = [0, 0]
     consensus_focus_dict = {}
     temporal_consistency_dict = {}
+    if get_KL_values:
+        epoch_kl_per_scale = {
+            'final': [],
+            'scale1': [],
+            'scale2': [],
+            'scale4': []
+        }
+    if get_pseudolabel_acc:
+        pseudolabel_accuracy_tracker = {
+            'correct': 0,
+            'total': 0,
+            'per_scale': {'final': {'correct': 0, 'total': 0},
+                        'scale1': {'correct': 0, 'total': 0},
+                        'scale2': {'correct': 0, 'total': 0},
+                        'scale4': {'correct': 0, 'total': 0}}
+        }
+
     for i in range(1, len(train_dloader_list)):
         consensus_focus_dict[i] = 0
     for i, (image_t, label_t) in enumerate(train_dloader_list[0]):
@@ -68,7 +86,7 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         with torch.no_grad():
             # knowledge_list: [B, source_domain_num*num_scales, num_classes]
             knowledge_list = [torch.cat([torch.softmax(model_list[i](image_t)[k], dim=1).unsqueeze(1) 
-                              for k in ['final','scale1','scale2','scale4']], dim=1)
+                              for k in scale_names], dim=1)
                               for i in range(1, source_domain_num + 1)]
             knowledge_list = torch.cat(knowledge_list, 1)
         _, consensus_knowledge, consensus_weight, consensus_mask = knowledge_vote_multiscale(knowledge_list, confidence_gate,
@@ -86,6 +104,32 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         consensus_knowledge = consensus_knowledge.view(B, M, S, -1)
         # [B, N] → [B, M, S]
         consensus_mask = consensus_mask.view(B, M, S)
+
+        # DEBUG: Calculate pseudolabel accuracy per scale
+        if get_pseudolabel_acc:
+            # Get pseudolabel predictions (hard labels) without mixup
+            weighted_sum_original = torch.sum(consensus_knowledge * consensus_mask[..., None], dim=1)  # [B, S, C]
+            weight_sum_original = torch.sum(consensus_mask, dim=1, keepdim=False)  # [B, S]
+            consensus_per_scale_original = weighted_sum_original / (weight_sum_original[..., None] + 1e-6)  # [B, S, C]
+
+            # Get hard pseudolabels from original consensus (no mixup)
+            pseudolabel_per_scale = consensus_per_scale_original.argmax(dim=2)  # [B, S]
+            
+            # label_t shape: [B] - true labels
+            label_t = label_t.long().cuda()
+            true_labels = label_t.unsqueeze(1).expand(-1, S)  # [B, S] - repeat for all scales
+            
+            # Calculate per-scale accuracy
+            scale_names_list = ['final', 'scale1', 'scale2', 'scale4']
+            for scale_idx, scale_name in enumerate(scale_names_list):
+                correct_preds = (pseudolabel_per_scale[:, scale_idx] == true_labels[:, scale_idx]).sum().item()
+                pseudolabel_accuracy_tracker['per_scale'][scale_name]['correct'] += correct_preds
+                pseudolabel_accuracy_tracker['per_scale'][scale_name]['total'] += B
+            
+            # Calculate overall accuracy (average across scales)
+            correct_overall = (pseudolabel_per_scale == true_labels).sum().item()
+            pseudolabel_accuracy_tracker['correct'] += correct_overall
+            pseudolabel_accuracy_tracker['total'] += B * S
 
         # Perform data augmentation with mixup
         if mix_aug:
@@ -105,8 +149,15 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         # Calculate per scale KL divergence 
         output_t = model_list[0](mixed_image)
         student_log_probs = torch.stack([torch.log_softmax(output_t[k], dim=1)
-                                         for k in ['final', 'scale1', 'scale2', 'scale4']], dim=1)
+                                         for k in scale_names], dim=1)
         kl_per_scale = torch.sum(consensus_per_scale * student_log_probs, dim=2)
+        # DEBUG: save kl_per_scale to check if it converges to 0 quickly
+        if get_KL_values:
+            for scale_idx, scale_name in enumerate(scale_names):
+                # Extract KL values for this scale across the batch: [B]
+                kl_values = kl_per_scale[:, scale_idx].detach().cpu().numpy()
+                # Store all batch samples for this epoch
+                epoch_kl_per_scale[scale_name].extend(kl_values)
         kl_per_sample = kl_per_scale.mean(dim=1)
         task_loss_t = kl_per_sample.mean()
         task_loss_t.backward()
@@ -149,6 +200,93 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         writer.add_scalar(tag="Train/source_domain_{}_weight".format(source_domains[i]),
                           scalar_value=domain_weight[i + 1], global_step=epoch + 1)
     print("Source Domains:{}, Domain Weight :{}".format(source_domains, domain_weight[1:]))
+    if get_KL_values:
+        epoch_kl_stats = {}
+        for scale_name in scale_names:
+            kl_values = np.array(epoch_kl_per_scale[scale_name])
+            
+            # Compute statistics for this scale's KL divergence across the epoch
+            mean_kl = kl_values.mean()
+            std_kl = kl_values.std()
+            min_kl = kl_values.min()
+            max_kl = kl_values.max()
+            median_kl = np.median(kl_values)
+            
+            epoch_kl_stats[scale_name] = {
+                'mean': mean_kl,
+                'std': std_kl,
+                'min': min_kl,
+                'max': max_kl,
+                'median': median_kl
+            }
+            
+            writer.add_scalar(
+                f'Epoch_KL/scale_{scale_name}_mean',
+                mean_kl,
+                global_step=epoch + 1
+            )
+            writer.add_scalar(
+                f'Epoch_KL/scale_{scale_name}_std',
+                std_kl,
+                global_step=epoch + 1
+            )
+            writer.add_scalar(
+                f'Epoch_KL/scale_{scale_name}_min',
+                min_kl,
+                global_step=epoch + 1
+            )
+            writer.add_scalar(
+                f'Epoch_KL/scale_{scale_name}_max',
+                max_kl,
+                global_step=epoch + 1
+            )
+            writer.add_scalar(
+                f'Epoch_KL/scale_{scale_name}_median',
+                median_kl,
+                global_step=epoch + 1
+            )
+        
+        # Log all scales' mean KL on same plot for comparison
+        writer.add_scalars(
+            'Epoch_KL/all_scales_mean',
+            {scale_name: epoch_kl_stats[scale_name]['mean'] for scale_name in scale_names},
+            global_step=epoch + 1
+        )
+        
+        # Log all scales' std on same plot
+        writer.add_scalars(
+            'Epoch_KL/all_scales_std',
+            {scale_name: epoch_kl_stats[scale_name]['std'] for scale_name in scale_names},
+            global_step=epoch + 1
+        )
+        
+        # Compute inter-scale variance to detect if scales are converging to same KL
+        mean_kls = np.array([epoch_kl_stats[s]['mean'] for s in scale_names])
+        inter_scale_variance = mean_kls.var()
+        inter_scale_std = mean_kls.std()
+        
+        writer.add_scalar(
+            'Epoch_KL/inter_scale_variance',
+            inter_scale_variance,
+            global_step=epoch + 1
+        )
+        writer.add_scalar(
+            'Epoch_KL/inter_scale_std',
+            inter_scale_std,
+            global_step=epoch + 1
+        )
+    if get_pseudolabel_acc:
+        overall_acc = (pseudolabel_accuracy_tracker['correct'] / pseudolabel_accuracy_tracker['total']) * 100
+        for scale_name in scale_names_list:
+            correct = pseudolabel_accuracy_tracker['per_scale'][scale_name]['correct']
+            total = pseudolabel_accuracy_tracker['per_scale'][scale_name]['total']
+            acc = (correct / total) * 100 if total > 0 else 0
+        writer.add_scalar(tag="Train/pseudolabel_overall_accuracy", scalar_value=overall_acc, global_step=epoch + 1)
+        writer.add_scalars(main_tag="Train/pseudolabel_accuracy_all_scales",
+                            tag_scalar_dict={scale_name: (pseudolabel_accuracy_tracker['per_scale'][scale_name]['correct'] / 
+                                                        pseudolabel_accuracy_tracker['per_scale'][scale_name]['total']) * 100
+                                            for scale_name in scale_names_list},
+                            global_step=epoch + 1)
     return domain_weight
 
 

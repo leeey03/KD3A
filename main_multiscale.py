@@ -51,6 +51,9 @@ parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 parser.add_argument('-bm', '--bn-momentum', type=float, default=0.1, help="the batchnorm momentum parameter")
 parser.add_argument("--gpu", default="0", type=str, metavar='GPU plans to use', help='The GPU id plans to use')
 parser.add_argument('-mmd', '--get-mmd', action='store_true', help='Get MMD Loss')
+parser.add_argument('-kl', '--get-kl', action='store_true', help='Get KL Loss values per scale')
+parser.add_argument('-pl', '--get-pseudolabel-acc', action='store_true', help='Get Pseudolabel Accuracy')
+
 args = parser.parse_args()
 # import config files
 with open(r"./config/{}".format(args.config)) as file:
@@ -193,7 +196,9 @@ def main(args=args, configs=configs):
                             malicious_domain=configs["UMDAConfig"]["malicious"]["attack_domain"],
                             attack_level=configs["UMDAConfig"]["malicious"]["attack_level"],
                             tau=configs["ModelConfig"]["tau"],
-                            mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"))
+                            mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"),
+                            get_KL_values=args.get_kl,
+                            get_pseudolabel_acc=args.get_pseudolabel_acc)
         test(args.target_domain, args.source_domains, test_dloaders, models, epoch,
             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10), get_mmd=args.get_mmd)
         for scheduler in optimizer_schedulers:
