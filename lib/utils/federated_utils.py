@@ -114,6 +114,7 @@ def calculate_consensus_focus(consensus_focus_dict, knowledge_list, confidence_g
     return consensus_focus_dict
 
 def calculate_multiscale_consensus_focus(consensus_focus_dict, knowledge_list, confidence_gate, source_domain_numbers, num_scales=4):
+    # TODO: FIX
     """
     modified calculate_consensus_focus to handle multi-scale knowledge. 
     Performs per scale knowledge vote then aggregates per source. Returns consensus_focus_dict with same struture as original
@@ -127,9 +128,9 @@ def calculate_multiscale_consensus_focus(consensus_focus_dict, knowledge_list, c
             for src in combination:
                 flat_indices.extend([src * num_scales + s for s in range(num_scales)])
             # knowledge vote over all scales within selected combination
-            consensus_conf, _, consensus_mask = knowledge_vote(knowledge_list[:, flat_indices, :], confidence_gate, C)
+            consensus_conf, _, consensus_mask, _ = knowledge_vote_multiscale(knowledge_list[:, flat_indices, :], confidence_gate, C)
             # aggregate scale contributions per source 
-            mask = consensus_mask.view(B, len(combination), num_scales)  
+            mask = consensus_mask.view(B, 1, 1).expand(B, len(combination), num_scales) # extend per-sample mask to all scales
             conf = consensus_conf.unsqueeze(-1).expand_as(mask)
             contribution = torch.sum(conf * mask).item()
             domain_contribution[frozenset(combination)] = contribution
@@ -141,6 +142,52 @@ def calculate_multiscale_consensus_focus(consensus_focus_dict, knowledge_list, c
             consensus_focus_dict[source_idx + 1] += (domain_contribution[frozenset(permutation[:permutation.index(source_idx) + 1])]
                                                     - domain_contribution[frozenset(permutation[:permutation.index(source_idx)])]
                                                     ) / permutation_num
+    return consensus_focus_dict
+
+def calculate_consensus_focus_multiscale(consensus_focus_dict, knowledge_list, confidence_gate, 
+                                         source_domain_numbers, num_scales, num_classes):
+    # TODO: CHECK
+    """
+    knowledge_list: [B, M*S, C] where predictions are ordered by domain then scale
+    """
+    M = source_domain_numbers
+    S = num_scales
+    
+    domain_contribution = {frozenset(): 0}
+    
+    for combination_num in range(1, M + 1):
+        combination_list = list(combinations(range(M), combination_num))
+        
+        for combination in combination_list:
+            # Select all scales for the selected domains
+            selected_indices = []
+            for domain_idx in combination:
+                # Get all scale indices for this domain
+                start_idx = domain_idx * S
+                end_idx = start_idx + S
+                selected_indices.extend(range(start_idx, end_idx))
+            
+            # Extract predictions for selected domains (all scales)
+            selected_knowledge = knowledge_list[:, selected_indices, :]  # [B, len(combination)*S, C]
+            
+            consensus_knowledge_conf, consensus_knowledge, consensus_knowledge_mask = knowledge_vote(
+                selected_knowledge, confidence_gate, num_classes)
+            
+            domain_contribution[frozenset(combination)] = torch.sum(
+                consensus_knowledge_conf * consensus_knowledge_mask).item()
+    
+    # Rest of the function stays the same
+    permutation_list = list(permutations(range(M), M))
+    permutation_num = len(permutation_list)
+    
+    for permutation in permutation_list:
+        permutation = list(permutation)
+        for source_idx in range(M):
+            consensus_focus_dict[source_idx + 1] += (
+                domain_contribution[frozenset(permutation[:permutation.index(source_idx) + 1])]
+                - domain_contribution[frozenset(permutation[:permutation.index(source_idx)])]
+            ) / permutation_num
+    
     return consensus_focus_dict
 
 def calculate_temporal_consistency(knowledge_list, source_domain_num, num_scales=4):

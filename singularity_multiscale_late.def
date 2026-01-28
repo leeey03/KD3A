@@ -1,0 +1,50 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
+
+%labels
+    Author leeey03
+    Version 1.0
+    Description "PyTorch 2.8.0 (CUDA 12.4) training environment for reproducible KD3A baseline experiments"
+
+%files
+    # Copy only essential source files (you can adjust these paths)
+    requirements.txt /multiscale_KD3A/requirements.txt
+    main_multiscale_late.py /multiscale_KD3A/main_multiscale.py
+    model/multiscale.py /multiscale_KD3A/model/multiscale.py
+    train/train_multiscale_late.py /multiscale_KD3A/train/train_multiscale.py
+    datasets/EpicKitchens.py /multiscale_KD3A/datasets/EpicKitchens.py
+    lib/utils/ /multiscale_KD3A/lib/
+    data/frame_annotations_transVAE/ /multiscale_KD3A/data/
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export PYTHONPATH=/multiscale_KD3A:$PYTHONPATH
+    export PATH=/opt/conda/bin:$PATH
+    export TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9"  # multi-versions for more compatibility
+    export CUDA_VISIBLE_DEVICES=0
+
+%post
+    echo "Setting up container environment..."
+
+    # Update system and install useful tools
+    apt-get update && apt-get install -y \
+        git vim wget python3-pip && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Create workspace directory
+    mkdir -p /multiscale_KD3A
+    cd /multiscale_KD3A
+
+    # Install Python dependencies
+    pip install --upgrade pip setuptools wheel
+    pip install -r /multiscale_KD3A/requirements.txt
+
+    # Optional: Jupyter & debugging tools for development
+    # pip install jupyterlab debugpy
+
+    echo "Environment setup complete."
+
+%runscript
+    echo "Running main script..."
+    exec python /multiscale_KD3A/main_multiscale.py "$@"

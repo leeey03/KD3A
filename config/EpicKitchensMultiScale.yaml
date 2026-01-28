@@ -2,15 +2,16 @@
 DataConfig:
   dataset: "EpicKitchens"
   data_dir: "data"
-  num_segments: 64
+  num_segments: 256
 
 ModelConfig:
   backbone: "i3d_trans"
   pretrained: True # could probably remove
-  tau: 0.6 # weightage for consensus focus versus temporal consistency 
+  # tau: 0.6 # weightage for consensus focus versus temporal consistency 
+  l2_kd_weight: 0.1
 
 TrainingConfig:
-  batch_size: 50
+  batch_size: 60
   # The total data numbers we use in each epoch
   epoch_samples: 3000
   total_epochs: 80

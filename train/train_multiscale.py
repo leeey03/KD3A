@@ -105,7 +105,7 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         # [B, N] → [B, M, S]
         consensus_mask = consensus_mask.view(B, M, S)
 
-        # DEBUG: Calculate pseudolabel accuracy per scale
+        # DEBUG: Calculate pseudolabel accuracy per scale (if pseudolabels are confident)
         if get_pseudolabel_acc:
             # Get pseudolabel predictions (hard labels) without mixup
             weighted_sum_original = torch.sum(consensus_knowledge * consensus_mask[..., None], dim=1)  # [B, S, C]
@@ -118,18 +118,23 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
             # label_t shape: [B] - true labels
             label_t = label_t.long().cuda()
             true_labels = label_t.unsqueeze(1).expand(-1, S)  # [B, S] - repeat for all scales
-            
+
             # Calculate per-scale accuracy
             scale_names_list = ['final', 'scale1', 'scale2', 'scale4']
             for scale_idx, scale_name in enumerate(scale_names_list):
-                correct_preds = (pseudolabel_per_scale[:, scale_idx] == true_labels[:, scale_idx]).sum().item()
+                # Filter by consensus weight (confident pseudolabels)
+                confident_pseudolabels = pseudolabel_per_scale[consensus_weight, scale_idx]
+                confident_true_labels = true_labels[consensus_weight, scale_idx]  
+                correct_preds = (confident_pseudolabels == confident_true_labels).sum().item()
                 pseudolabel_accuracy_tracker['per_scale'][scale_name]['correct'] += correct_preds
-                pseudolabel_accuracy_tracker['per_scale'][scale_name]['total'] += B
+                pseudolabel_accuracy_tracker['per_scale'][scale_name]['total'] += confident_true_labels.size(0)
             
             # Calculate overall accuracy (average across scales)
-            correct_overall = (pseudolabel_per_scale == true_labels).sum().item()
+            confident_pseudolabels_all = pseudolabel_per_scale[consensus_weight]
+            confident_true_labels_all = true_labels[consensus_weight]
+            correct_overall = (confident_pseudolabels_all == confident_true_labels_all).sum().item()
             pseudolabel_accuracy_tracker['correct'] += correct_overall
-            pseudolabel_accuracy_tracker['total'] += B * S
+            pseudolabel_accuracy_tracker['total'] += confident_true_labels_all.size(0)
 
         # Perform data augmentation with mixup
         if mix_aug:
@@ -145,12 +150,12 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         # Aggregate over sources and normalise 
         weighted_sum = torch.sum(mixed_consensus * consensus_mask[..., None], dim=1)  # [B, S, C]
         weight_sum = torch.sum(consensus_mask, dim=1, keepdim=False)  # [B, S]
-        consensus_per_scale = weighted_sum / (weight_sum[..., None] + 1e6) # avoid zero division 
+        consensus_per_scale = weighted_sum / (weight_sum[..., None] + 1e-6) # avoid zero division 
         # Calculate per scale KL divergence 
         output_t = model_list[0](mixed_image)
         student_log_probs = torch.stack([torch.log_softmax(output_t[k], dim=1)
                                          for k in scale_names], dim=1)
-        kl_per_scale = torch.sum(consensus_per_scale * student_log_probs, dim=2)
+        kl_per_scale = torch.sum(-1* consensus_per_scale * student_log_probs, dim=2)
         # DEBUG: save kl_per_scale to check if it converges to 0 quickly
         if get_KL_values:
             for scale_idx, scale_name in enumerate(scale_names):
@@ -159,7 +164,7 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
                 # Store all batch samples for this epoch
                 epoch_kl_per_scale[scale_name].extend(kl_values)
         kl_per_sample = kl_per_scale.mean(dim=1)
-        task_loss_t = kl_per_sample.mean()
+        task_loss_t = torch.mean(consensus_weight * kl_per_sample)
         task_loss_t.backward()
         optimizer_list[0].step()
         # Calculate consensus focus

@@ -116,14 +116,14 @@ class ClassificationHead(nn.Module):
 
 class FusionHead(nn.Module):
     """Ensemble fusion head that concatenates scale features before classification."""
-    def __init__(self, d_model: int, classes: int, dropout: float = 0.1):
+    def __init__(self, d_model: int, classes: int, scales: int, dropout: float = 0.1):
         super().__init__()
         self.norm = nn.LayerNorm(d_model)
         self.dropout = nn.Dropout(dropout)
         # Global average pooling to aggregate temporal dimension
         self.global_pool = nn.AdaptiveAvgPool1d(1)
         # Classification layer for concatenated features (3 scales * d_model)
-        self.fc = nn.Linear(d_model * 3, classes)
+        self.fc = nn.Linear(d_model * scales, classes)
     
     def forward(self, feat_list: List[torch.Tensor]) -> torch.Tensor:
         """
@@ -152,7 +152,63 @@ class FusionHead(nn.Module):
         logits = self.fc(fused_feats)  # [B, classes]
         
         return logits
+class PerScaleTemporalTransformer(nn.Module):
+    """
+    Temporal transformer processing a single temporal scale. Supports downsampling for usage across different scales.
+    """
+    def __init__(self, 
+                 d_model: int = 512,
+                 n_heads: int = 8,
+                 n_layers: int = 4,
+                 dim_feedforward: int = 1024,
+                 dropout: float = 0.1,
+                 input_dim: int = 2048,
+                 downsample_factor: Optional[int] = None):
+        super().__init__()
+        self.name = "PerScaleTemporalTransformer"
+        
+        self.d_model = d_model
+        
+        # Input projection
+        self.input_proj = nn.Linear(input_dim, d_model)
 
+        # Sinusoidal or learnable positional encoding
+        self.pos_encoder = PositionalEncoding(d_model, max_len=512)
+
+        # Temporal downsampler if specified
+        self.downsampler = None
+        if downsample_factor is not None and downsample_factor > 1:
+            self.downsampler = TemporalDownsampler(downsample_factor)
+        
+        # Transformer encoder
+        self.encoder = TransformerEncoder(d_model, n_heads, 
+                                          n_layers, 
+                                          dim_feedforward, dropout)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+        
+        Args:
+            x: Input features [B, T, input_dim]
+        
+        Returns:
+            Encoded features [B, T', d_model] where T' depends on downsampling
+        """
+        B, T, _ = x.shape
+        
+        # Project input to model dimension
+        x = self.input_proj(x)  # [B, T, d_model]
+        x = x + self.pos_encoder(x)  # Add position info
+        
+        # Downsample if applicable
+        if self.downsampler is not None:
+            x = self.downsampler(x)  # [B, T', d_model]
+        
+        # Encode with transformer
+        feat = self.encoder(x)  # [B, T', d_model]
+        
+        return feat
 
 class MultiScaleTemporalTransformer(nn.Module):
     """
