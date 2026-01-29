@@ -230,15 +230,20 @@ def main(args=args, configs=configs):
         test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, epoch,
             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10), get_mmd=args.get_mmd)
         for scheduler in optimizer_schedulers:
-            scheduler.step()
+            for scale in scale_names:
+                scheduler[scale].step()
         # save models every 10 epochs
         if (epoch + 1) % 10 == 0:
             # save target model with epoch, domain, model, optimizer
             save_checkpoint(
                 {"epoch": epoch + 1,
                 "domain": args.target_domain,
-                "backbone": models[0].state_dict(),
-                "optimizer": optimizers[0].state_dict(),
+                "encoderscale1": models[0]['scale1'].state_dict(),
+                "encoderscale4": models[0]['scale4'].state_dict(),
+                "encoderscale16": models[0]['scale16'].state_dict(),
+                "optimizerscale1": optimizers[0]['scale1'].state_dict(),
+                "optimizerscale4": optimizers[0]['scale4'].state_dict(),
+                "optimizerscale16": optimizers[0]['scale16'].state_dict(),
                 },
                 filename="{}.pth.tar".format(args.target_domain))
         # peak_mem = torch.cuda.max_memory_allocated() / 1024**2

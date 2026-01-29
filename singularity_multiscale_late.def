@@ -9,9 +9,9 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 %files
     # Copy only essential source files (you can adjust these paths)
     requirements.txt /multiscale_KD3A/requirements.txt
-    main_multiscale_late.py /multiscale_KD3A/main_multiscale.py
+    main_multiscale_late.py /multiscale_KD3A/main_multiscale_late.py
     model/multiscale.py /multiscale_KD3A/model/multiscale.py
-    train/train_multiscale_late.py /multiscale_KD3A/train/train_multiscale.py
+    train/train_multiscale_late.py /multiscale_KD3A/train/train_multiscale_late.py
     datasets/EpicKitchens.py /multiscale_KD3A/datasets/EpicKitchens.py
     lib/utils/ /multiscale_KD3A/lib/
     data/frame_annotations_transVAE/ /multiscale_KD3A/data/
@@ -47,4 +47,4 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 
 %runscript
     echo "Running main script..."
-    exec python /multiscale_KD3A/main_multiscale.py "$@"
+    exec python /multiscale_KD3A/main_multiscale_late.py "$@"
