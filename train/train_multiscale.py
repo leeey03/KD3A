@@ -121,20 +121,21 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
 
             # Calculate per-scale accuracy
             scale_names_list = ['final', 'scale1', 'scale2', 'scale4']
+            confident_pseudolabel_mask = consensus_weight.bool()
             for scale_idx, scale_name in enumerate(scale_names_list):
                 # Filter by consensus weight (confident pseudolabels)
-                confident_pseudolabels = pseudolabel_per_scale[consensus_weight, scale_idx]
-                confident_true_labels = true_labels[consensus_weight, scale_idx]  
+                confident_pseudolabels = pseudolabel_per_scale[confident_pseudolabel_mask, scale_idx]
+                confident_true_labels = true_labels[confident_pseudolabel_mask, scale_idx]  
                 correct_preds = (confident_pseudolabels == confident_true_labels).sum().item()
                 pseudolabel_accuracy_tracker['per_scale'][scale_name]['correct'] += correct_preds
                 pseudolabel_accuracy_tracker['per_scale'][scale_name]['total'] += confident_true_labels.size(0)
             
             # Calculate overall accuracy (average across scales)
-            confident_pseudolabels_all = pseudolabel_per_scale[consensus_weight]
-            confident_true_labels_all = true_labels[consensus_weight]
+            confident_pseudolabels_all = pseudolabel_per_scale[confident_pseudolabel_mask]
+            confident_true_labels_all = true_labels[confident_pseudolabel_mask]
             correct_overall = (confident_pseudolabels_all == confident_true_labels_all).sum().item()
             pseudolabel_accuracy_tracker['correct'] += correct_overall
-            pseudolabel_accuracy_tracker['total'] += confident_true_labels_all.size(0)
+            pseudolabel_accuracy_tracker['total'] += confident_true_labels_all.nelement()
 
         # Perform data augmentation with mixup
         if mix_aug:
@@ -160,14 +161,16 @@ def train(train_dloader_list, model_list, optimizer_list, epoch, writer,
         if get_KL_values:
             for scale_idx, scale_name in enumerate(scale_names):
                 # Extract KL values for this scale across the batch: [B]
-                kl_values = kl_per_scale[:, scale_idx].detach().cpu().numpy()
+                # Only consider samples with confident pseudolabels 
+                kl_values = kl_per_scale[confident_pseudolabel_mask, scale_idx].detach().cpu().numpy()
                 # Store all batch samples for this epoch
                 epoch_kl_per_scale[scale_name].extend(kl_values)
         kl_per_sample = kl_per_scale.mean(dim=1)
         task_loss_t = torch.mean(consensus_weight * kl_per_sample)
         task_loss_t.backward()
         optimizer_list[0].step()
-        # Calculate consensus focus
+        # Calculate consensus focus 
+        # TODO: verify if this is correct or if the multiscale version needs to be made 
         consensus_focus_dict = calculate_consensus_focus(consensus_focus_dict, knowledge_list, confidence_gate,
                                                          source_domain_num, num_classes)
         # Calculate temporal consistency score
