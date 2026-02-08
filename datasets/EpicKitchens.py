@@ -43,19 +43,19 @@ class EpicI3DDataset(Dataset):
             else:
                 fname = f"img_{i:05d}.t7"
                 feat_path = os.path.join(dir_path, fname)
-            if os.path.exists(feat_path):
-                try:
-                    feat = torch.load(feat_path, map_location="cpu").float()
-                    loaded_count += 1
-                except Exception as e:
-                    if self.debug:
-                        print(f"Error loading {feat_path}: {e}")
+                if os.path.exists(feat_path):
+                    try:
+                        feat = torch.load(feat_path, map_location="cpu").float()
+                        loaded_count += 1
+                    except Exception as e:
+                        if self.debug:
+                            print(f"Error loading {feat_path}: {e}")
+                        feat = torch.zeros(2048)
+                        zero_count += 1
+                else:
+                    # pad with zeros if frame does not exist (end of video)
                     feat = torch.zeros(2048)
                     zero_count += 1
-            else:
-                # pad with zeros if frame does not exist (end of video)
-                feat = torch.zeros(2048)
-                zero_count += 1
             feat_list.append(feat)
 
         features = torch.stack(feat_list, dim=0)  # [num_segments, 2048]

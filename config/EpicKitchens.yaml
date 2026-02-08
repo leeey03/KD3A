@@ -2,7 +2,7 @@
 DataConfig:
   dataset: "EpicKitchens"
   data_dir: "data"
-  num_segments: 16
+  num_segments: 256
 
 ModelConfig:
   backbone: "i3d_trans"
@@ -11,7 +11,7 @@ ModelConfig:
 TrainingConfig:
   batch_size: 50
   # The total data numbers we use in each epoch
-  epoch_samples: 30000
+  epoch_samples: 3000
   total_epochs: 80
   # We decay learning rate from begin value to end value with cosine annealing schedule
   learning_rate_begin: 0.01
