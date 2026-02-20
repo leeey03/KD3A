@@ -45,7 +45,7 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
             task_loss_s.backward()
             optimizer.step()
             classifier_optimizer.step()
-
+        # TODO: fix bug on the source domain name for multiple source domains
         writer.add_scalar(tag="Train/source_domain_{}_loss".format(source_domains[0]), scalar_value=training_losses.avg,
                         global_step=epoch + 1)
         tmp_score = torch.cat(tmp_score, dim=0).detach()
