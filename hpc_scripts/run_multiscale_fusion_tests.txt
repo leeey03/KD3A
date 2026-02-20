@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N multiScaleFusionsTest
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/multiScaleFusionsKD3A.sif
+## fusion_method: weighted_projection
+apptainer run --nv \
+	--pwd /multiscale_KD3A \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+	--bind /home/svu/e1036284/EpicKitchensMultiScaleWeightedProjection.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+	$container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+	--data-parallel \
+	--train-time 13  \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+## fusion_method: temporal_attention
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchensMultiScaleTemporalAttention.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+        --target-domain P22 --source-domains P08 P01 \
+        --data-parallel \
+        --train-time 14  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+## fusion_method: gating
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchensMultiScaleGating.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+        --target-domain P22 --source-domains P08 P01 \
+        --data-parallel \
+        --train-time 15  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+EOF

@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N supervisedBaselineTest
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/simpleBaseline.sif
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P22 --source-domains P22 \
+        --train-time 30 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P08 --source-domains P08 \
+        --train-time 31 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --target-domain P01 --source-domains P01 --train-time 32 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+EOF

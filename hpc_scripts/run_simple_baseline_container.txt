@@ -1,0 +1,71 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N simpleBaselineTest
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/simpleBaseline.sif
+## train_time 24 P01->P22
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P01 --source-domains P22 --train-time 24 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+## train_time 25 P01->P22
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P22 --source-domains P01 --train-time 25 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+## train_time 26 P01->P08
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P08 --source-domains P01 --train-time 26 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+## train_time 27 P22->P08
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P08 --source-domains P22 --train-time 27 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+## train_time 28 P08->P01
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P01 --source-domains P08 --train-time 28 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+## train_time 29 P22->P01
+apptainer run --nv \
+        --pwd /simple_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/simple_baseline/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchens.yaml:/simple_baseline/config/EpicKitchens.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchens.yaml \
+        --data-parallel \
+        --target-domain P01 --source-domains P22 --train-time 29 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+EOF

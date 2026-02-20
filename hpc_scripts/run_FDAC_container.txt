@@ -1,0 +1,37 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N baselineTest
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/FDACBaseline.sif
+apptainer run --nv \
+	--pwd /FDAC_baseline \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
+	$container \
+	--baseline FDAC_Feature \
+	--target-domain P22 \
+	--dataset EpicKitchens \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /FDAC_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
+        $container \
+        --baseline FDAC_Feature \
+        --target-domain P08 \
+        --dataset EpicKitchens \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /FDAC_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
+        $container \
+        --baseline FDAC_Feature \
+        --target-domain P01 \
+        --dataset EpicKitchens \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+EOF
