@@ -7,7 +7,7 @@ from lib.utils.avgmeter import AverageMeter
 
 
 def train(train_dloader_list, model_list, classifier_list, optimizer_list, classifier_optimizer_list, epoch, writer,
-          num_classes, domain_weight, source_domains, batchnorm_mmd, batch_per_epoch, confidence_gate_begin,
+          num_classes, domain_weight, source_domains, scale_names, batchnorm_mmd, batch_per_epoch, confidence_gate_begin,
           confidence_gate_end, communication_rounds, total_epochs, malicious_domain, attack_level, 
           l2_kd_weight=0.1, mix_aug=True):
     """
@@ -22,7 +22,6 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
         optimizer_list: List of dicts per domain: [{'scale1': opt, 'scale4': opt, 'scale16': opt}, ...]
         classifier_optimizer_list: List of dicts per domain: [{'scale1': opt, ..., 'fusion': opt}, ...]
     """
-    scale_names = ['scale1', 'scale4', 'scale16']
     task_criterion = nn.CrossEntropyLoss().cuda()
     # kl_criterion = nn.KLDivLoss(reduction='batchmean')
     source_domain_num = len(train_dloader_list[1:])
@@ -155,7 +154,7 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
         
         # Use the UNION of confident samples across all scales for target weight
         # A sample is confident if ANY scale has consensus
-        combined_consensus_weight = torch.zeros_like(scale_consensus_weights['scale1'])
+        combined_consensus_weight = torch.zeros_like(next(iter(scale_consensus_weights.values())))
         for scale in scale_names:
             combined_consensus_weight = torch.maximum(combined_consensus_weight, 
                                                      scale_consensus_weights[scale])
@@ -257,7 +256,7 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
         # Create ensemble pseudo-label via confidence-weighted averaging
         # This gives more weight to scales with higher consensus
         total_weight = 0
-        weighted_pseudo_sum = torch.zeros_like(mixed_scale_consensus['scale1'])
+        weighted_pseudo_sum = torch.zeros_like(next(iter(mixed_scale_consensus.values())))
         
         for scale in scale_names:
             # Weight each scale's pseudo-label by its consensus weight
@@ -377,7 +376,7 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
     return domain_weight
 
 
-def test(target_domain, source_domains, test_dloader_list, model_list, classifier_list, epoch, writer, 
+def test(target_domain, source_domains, test_dloader_list, model_list, classifier_list, scale_names, epoch, writer, 
          num_classes=126, top_5_accuracy=True, get_mmd=True):
     """
     Test function for multi-scale K3DA with late fusion.
@@ -385,9 +384,7 @@ def test(target_domain, source_domains, test_dloader_list, model_list, classifie
     Args:
         model_list: List of dicts per domain: [{'scale1': model, 'scale4': model, 'scale16': model}, ...]
         classifier_list: List of dicts per domain: [{'scale1': cls, ..., 'fusion': cls}, ...]
-    """
-    scale_names = ['scale1', 'scale4', 'scale16']
-    
+    """    
     source_domain_losses = {
         scale: [AverageMeter() for _ in source_domains] 
         for scale in scale_names + ['fusion']

@@ -52,6 +52,8 @@ parser.add_argument("--gpu", default="0", type=str, metavar='GPU plans to use', 
 parser.add_argument('-mmd', '--get-mmd', action='store_true', help='Get MMD Loss')
 parser.add_argument('-kl', '--get-kl', action='store_true', help='Get KL Loss values per scale')
 parser.add_argument('-pl', '--get-pseudolabel-acc', action='store_true', help='Get Pseudolabel Accuracy')
+parser.add_argument('--scales', type=str, nargs="+", help="The scales to use for the multi-scale model, e.g. --scales 1 4 16")
+parser.add_argument('-rmL2', '--remove-l2-loss', action='store_true', help='Remove L2 Loss')
 
 args = parser.parse_args()
 # import config files
@@ -78,8 +80,8 @@ def main(args=args, configs=configs):
     classifier_optimizers = []
     optimizer_schedulers = []
     classifier_optimizer_schedulers = []
-    scale_names = ['scale1', 'scale4', 'scale16']
-    scales = [1,4,16]
+    scale_values = [int(val) for val in args.scales]
+    scale_names = [f"scale{scale}" for scale in scale_values]
     # build dataset
     if configs["DataConfig"]["dataset"] == "EpicKitchens":
         domains = args.source_domains  # source domains
@@ -95,10 +97,10 @@ def main(args=args, configs=configs):
         # dictionary of models for each scale
         model_set = {}
         classifier_set = {}
-        for scale, scale_value in zip(scale_names, scales):
+        for scale, scale_value in zip(scale_names, scale_values):
             model_set[scale] = PerScaleTemporalTransformer(d_model=512, n_heads=8, n_layers=4, dim_feedforward=1024, dropout=0.1, input_dim=2048, downsample_factor=scale_value).cuda()
             classifier_set[scale] = ClassificationHead(d_model=512, classes=8, dropout=0.1).cuda()
-        classifier_set['fusion'] = FusionHead(d_model=512, classes=8, scales=len(scales), dropout=0.1).cuda()
+        classifier_set['fusion'] = FusionHead(d_model=512, classes=8, scales=len(scale_values), dropout=0.1).cuda()
         if args.data_parallel:
             device_ids = list(range(torch.cuda.device_count()))
             if len(device_ids) < 2:
@@ -121,10 +123,10 @@ def main(args=args, configs=configs):
             test_dloaders.append(source_test_dloader)
             model_set = {}
             classifier_set = {}
-            for scale, scale_value in zip(scale_names, scales):
+            for scale, scale_value in zip(scale_names, scale_values):
                 model_set[scale] = PerScaleTemporalTransformer(d_model=512, n_heads=8, n_layers=4, dim_feedforward=1024, dropout=0.1, input_dim=2048, downsample_factor=scale_value).cuda()
                 classifier_set[scale] = ClassificationHead(d_model=512, classes=8, dropout=0.1).cuda()
-            classifier_set['fusion'] = FusionHead(d_model=512, classes=8, scales=len(scales), dropout=0.1).cuda()
+            classifier_set['fusion'] = FusionHead(d_model=512, classes=8, scales=len(scale_values), dropout=0.1).cuda()
             if args.data_parallel:
                 device_ids = list(range(torch.cuda.device_count()))
                 if len(device_ids) < 2:
@@ -219,6 +221,7 @@ def main(args=args, configs=configs):
                             epoch, writer, num_classes=num_classes,
                             domain_weight=domain_weight, source_domains=args.source_domains,
                             batch_per_epoch=batch_per_epoch, total_epochs=total_epochs,
+                            scale_names=scale_names,
                             batchnorm_mmd=configs["UMDAConfig"]["batchnorm_mmd"],
                             communication_rounds=configs["UMDAConfig"]["communication_rounds"],
                             confidence_gate_begin=configs["UMDAConfig"]["confidence_gate_begin"],
@@ -227,7 +230,7 @@ def main(args=args, configs=configs):
                             attack_level=configs["UMDAConfig"]["malicious"]["attack_level"],
                             mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"),
                             l2_kd_weight=configs["ModelConfig"]["l2_kd_weight"])
-        test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, epoch,
+        test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, scale_names, epoch,
             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10), get_mmd=args.get_mmd)
         for scheduler in optimizer_schedulers:
             for scale in scale_names:
@@ -235,17 +238,14 @@ def main(args=args, configs=configs):
         # save models every 10 epochs
         if (epoch + 1) % 10 == 0:
             # save target model with epoch, domain, model, optimizer
-            save_checkpoint(
-                {"epoch": epoch + 1,
-                "domain": args.target_domain,
-                "encoderscale1": models[0]['scale1'].state_dict(),
-                "encoderscale4": models[0]['scale4'].state_dict(),
-                "encoderscale16": models[0]['scale16'].state_dict(),
-                "optimizerscale1": optimizers[0]['scale1'].state_dict(),
-                "optimizerscale4": optimizers[0]['scale4'].state_dict(),
-                "optimizerscale16": optimizers[0]['scale16'].state_dict(),
-                },
-                filename="{}.pth.tar".format(args.target_domain))
+            checkpoint = {
+            "epoch": epoch + 1,
+            "domain": args.target_domain,
+            }
+            for scale in scale_names:
+                checkpoint[f"encoder{scale}"] = models[0][scale].state_dict()
+                checkpoint[f"optimizer{scale}"] = optimizers[0][scale].state_dict()
+            save_checkpoint(checkpoint, filename="{}.pth.tar".format(args.target_domain))
         # peak_mem = torch.cuda.max_memory_allocated() / 1024**2
         # end_mem = torch.cuda.memory_allocated() / 1024**2
         # print(f"[GPU Memory] Epoch {epoch}: start={epoch_start_mem:.2f}MB, "f"end={end_mem:.2f}MB, peak={peak_mem:.2f}MB")
@@ -253,7 +253,7 @@ def main(args=args, configs=configs):
     print("Total training time is {:.2f} hours".format((time.time() - train_start_time) / 3600))
 
 def save_checkpoint(state, filename):
-    filefolder = "{}/{}/parameter/train_time:{}".format(args.base_path, configs["DataConfig"]["dataset"],
+    filefolder = "{}/{}/parameter/train_time_{}".format(args.base_path, configs["DataConfig"]["dataset"],
                                                         args.train_time)
     if not path.exists(filefolder):
         os.makedirs(filefolder)
