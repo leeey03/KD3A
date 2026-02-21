@@ -8,7 +8,7 @@ from lib.utils.avgmeter import AverageMeter
 
 def train(train_dloader_list, model_list, classifier_list, optimizer_list, classifier_optimizer_list, epoch, writer,
           num_classes, domain_weight, source_domains, scale_names, batchnorm_mmd, batch_per_epoch, confidence_gate_begin,
-          confidence_gate_end, communication_rounds, total_epochs, malicious_domain, attack_level, 
+          confidence_gate_end, communication_rounds, total_epochs, malicious_domain, attack_level, rm_L2=False,
           l2_kd_weight=0.1, mix_aug=True):
     """
     Multi-scale K3DA training with late fusion and L2 loss on KL divergences.
@@ -229,7 +229,10 @@ def train(train_dloader_list, model_list, classifier_list, optimizer_list, class
             
             # Add L2 loss to each scale (KEY: this connects all scales through L2)
             # When we backprop through l2_kd_loss, gradients flow to all scales
-            scale_loss = weighted_kl + l2_kd_weight * l2_kd_loss
+            if rm_L2:
+                scale_loss = weighted_kl
+            else:
+                scale_loss = weighted_kl + l2_kd_weight * l2_kd_loss
             total_scale_loss += scale_loss
         
         # Step 5: Single backward pass - gradients flow to all scales including L2 term

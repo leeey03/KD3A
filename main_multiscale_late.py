@@ -229,6 +229,7 @@ def main(args=args, configs=configs):
                             malicious_domain=configs["UMDAConfig"]["malicious"]["attack_domain"],
                             attack_level=configs["UMDAConfig"]["malicious"]["attack_level"],
                             mix_aug=(configs["DataConfig"]["dataset"] != "AmazonReview"),
+                            rm_L2=args.remove_l2_loss,
                             l2_kd_weight=configs["ModelConfig"]["l2_kd_weight"])
         test(args.target_domain, args.source_domains, test_dloaders, models, classifiers, scale_names, epoch,
             writer, num_classes=num_classes, top_5_accuracy=(num_classes > 10), get_mmd=args.get_mmd)
