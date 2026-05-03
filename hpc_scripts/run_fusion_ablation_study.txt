@@ -1,14 +1,17 @@
 #!/bin/bash
 #PBS -j oe
 #PBS -k oed
-#PBS -N multiScaleRun
+#PBS -N earlyFusionAblationStudy
 #PBS -l walltime=12:00:00
 #PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
 
+source ~/.bashrc
 cd $PBS_O_WORKDIR;
 
 ## define singularity container to use
-container=/home/svu/e1036284/multiscale_KD3A.sif
+container=/home/svu/e1036284/earlyFusionAblation.sif
+module load apptainer/1.4.1
+
 apptainer run --nv \
 	--pwd /multiscale_KD3A \
 	--bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
@@ -16,7 +19,6 @@ apptainer run --nv \
 	$container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
 	--target-domain P22 --source-domains P08 P01 \
 	--data-parallel \
-	--get-kl --get-pseudolabel-acc \
-	--train-time 17  \
+	--train-time 43  \
 	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
 EOF

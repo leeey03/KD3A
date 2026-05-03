@@ -1,0 +1,45 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N CoMDABaseline
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/CoMDABaseline.sif
+module load apptainer/1.4.1
+apptainer run --nv \
+	--pwd /CoMDA_baseline \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/CoMDA_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/CoMDA_results:/CoMDA_baseline/EpicKitchens \
+	$container \
+	--config EpicKitchens.yaml \
+	--target-domain P22 \
+	--dataset EpicKitchens \
+        --train-time 36 \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /CoMDA_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/CoMDA_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/CoMDA_results:/CoMDA_baseline/EpicKitchens \
+	$container \
+        --config EpicKitchens.yaml \
+        --target-domain P08 \
+        --dataset EpicKitchens \
+        --train-time 37 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /CoMDA_baseline \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/CoMDA_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/CoMDA_results:/CoMDA_baseline/EpicKitchens \        
+	$container \
+        --config EpicKitchens.yaml \
+        --target-domain P01 \
+        --dataset EpicKitchens \
+        --train-time 38 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+EOF

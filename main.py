@@ -82,6 +82,7 @@ def main(args=args, configs=configs):
         target_train_dloader, target_test_dloader = get_epic_dloader(
             train_list="data/frame_annotations_transVAE/list_{}_train.txt".format(args.target_domain), # should be P22
             test_list="data/frame_annotations_transVAE/list_{}_test.txt".format(args.target_domain),
+            data_dir=configs["DataConfig"]["data_dir"],
             batch_size=configs["TrainingConfig"]["batch_size"],
             num_segments=configs["DataConfig"]["num_segments"],
             num_workers=args.workers)

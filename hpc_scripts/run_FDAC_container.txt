@@ -5,13 +5,16 @@
 #PBS -l walltime=12:00:00
 #PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
 
+source ~/.bashrc
 cd $PBS_O_WORKDIR;
 
 ## define singularity container to use
 container=/home/svu/e1036284/FDACBaseline.sif
+module load apptainer/1.4.1
 apptainer run --nv \
 	--pwd /FDAC_baseline \
 	--bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/fdac_results:/FDAC_baseline/EpicKitchens \
 	$container \
 	--baseline FDAC_Feature \
 	--target-domain P22 \
@@ -20,7 +23,8 @@ apptainer run --nv \
 apptainer run --nv \
         --pwd /FDAC_baseline \
         --bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
-        $container \
+        --bind /scratch/e1036284/fdac_results:/FDAC_baseline/EpicKitchens \
+	$container \
         --baseline FDAC_Feature \
         --target-domain P08 \
         --dataset EpicKitchens \
@@ -28,7 +32,8 @@ apptainer run --nv \
 apptainer run --nv \
         --pwd /FDAC_baseline \
         --bind /scratch/e1036284/I3D-feature-pretrain/:/FDAC_baseline/data/I3D-feature-pretrain \
-        $container \
+        --bind /scratch/e1036284/fdac_results:/FDAC_baseline/EpicKitchens \
+	$container \
         --baseline FDAC_Feature \
         --target-domain P01 \
         --dataset EpicKitchens \

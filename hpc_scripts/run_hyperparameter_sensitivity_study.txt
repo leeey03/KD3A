@@ -1,0 +1,92 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N ablationStudies
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/lateMultiscale_KD3A.sif
+module load apptainer/1.4.1
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/L2_001.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 45  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/L2_005.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 46 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/L2_02.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 47 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/L2_05.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 48 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+# NUM_SEGMENTS: [16,64,512]
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/Num_seg_16.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 49 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/Num_seg_64.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 50 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/Num_seg_512.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --data-parallel \
+        --train-time 51 \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+EOF

@@ -14,7 +14,7 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
     train/train.py /KD3A_baseline/train/train.py
     datasets/EpicKitchens.py /KD3A_baseline/datasets/EpicKitchens.py
     lib/utils/ /KD3A_baseline/lib/
-    data/frame_annotations_transVAE/ /KD3A_baseline/data/
+    # data/frame_annotations_transVAE/ /KD3A_baseline/data/
 
 %environment
     export LC_ALL=C.UTF-8
@@ -34,6 +34,8 @@ From: pytorch/pytorch:2.8.0-cuda12.6-cudnn9-runtime
 
     # Create workspace directory
     mkdir -p /KD3A_baseline
+    mkdir -p /KD3A_baseline/data/frame_annotations_transVAE
+    mkdir -p /KD3A_baseline/data/I3D-feature-pretrain
     cd /KD3A_baseline
 
     # Install Python dependencies

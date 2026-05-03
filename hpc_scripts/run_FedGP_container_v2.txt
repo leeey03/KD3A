@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N fedGPBaseline
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/FedGPBaseline.sif
+module load apptainer/1.4.1
+
+apptainer run --nv \
+	--pwd /FedGP_baseline \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/FedGP_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/fedGP_results:/FedGP_baseline/experiments/fl_domainbed/EpicKitchens \
+	$container \
+        --data_dir data  --test_envs 1  --use_sim  --proj_w 0.5  --num_global_epochs 50 \
+ 	--dataset EpicKitchens \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+	--pwd /FedGP_baseline \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/FedGP_baseline/data/I3D-feature-pretrain \
+        --bind /scratch/e1036284/fedGP_results:/FedGP_baseline/experiments/fl_domainbed/EpicKitchens \
+	$container \
+        --data_dir data  --test_envs 0  --use_sim  --proj_w 0.5  --num_global_epochs 50 \
+ 	--dataset EpicKitchens \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+EOF

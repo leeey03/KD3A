@@ -242,9 +242,9 @@ class MultiScaleTemporalTransformer(nn.Module):
         # Sinusoidal or learnable positional encoding
         self.pos_encoder = PositionalEncoding(d_model, max_len=512)
 
-        # Temporal downsamplers
-        self.downsample_2x = TemporalDownsampler(2)
-        self.downsample_4x = TemporalDownsampler(4)
+        # Temporal downsamplers (Edited to match late fusion but parameter namings have yet to be updated.)
+        self.downsample_2x = TemporalDownsampler(4)
+        self.downsample_4x = TemporalDownsampler(16)
         
         # Independent transformer encoders for each scale
         self.encoder_scale1 = TransformerEncoder(d_model, n_heads, 
@@ -267,7 +267,8 @@ class MultiScaleTemporalTransformer(nn.Module):
         self.head_scale4 = ClassificationHead(d_model, classes, dropout)
         
         # Ensemble fusion head
-        self.fusion_head = FusionHead(d_model, classes, dropout)
+        # hardcoding 3 scales here
+        self.fusion_head = FusionHead(d_model, classes, 3, dropout)
     
     def forward(self, x: torch.Tensor, 
                 return_all_scales: bool = True) -> torch.Tensor:

@@ -8,7 +8,8 @@ ModelConfig:
   backbone: "i3d_trans"
   pretrained: True # could probably remove
   tau: 0.6 # weightage for consensus focus versus temporal consistency 
-  l2_kd_weight: 0.1
+  fusion_strategy: "concatenation" # alt: "concatenation", "weighted_projection", "temporal_attention", "gating"
+  l2_kd_weight: 0.01
 
 TrainingConfig:
   batch_size: 60

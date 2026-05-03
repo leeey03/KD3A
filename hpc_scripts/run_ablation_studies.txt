@@ -1,0 +1,60 @@
+#!/bin/bash
+#PBS -j oe
+#PBS -k oed
+#PBS -N ablationStudies
+#PBS -l walltime=12:00:00
+#PBS -l select=1:ncpus=72:mpiprocs=1:ompthreads=72:ngpus=1
+
+source ~/.bashrc
+cd $PBS_O_WORKDIR;
+
+## define singularity container to use
+container=/home/svu/e1036284/lateMultiscale_KD3A.sif
+module load apptainer/1.4.1
+
+# running ablation studies on scales
+apptainer run --nv \
+	--pwd /multiscale_KD3A \
+	--bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+	--bind /home/svu/e1036284/EpicKitchensMultiScale.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+	$container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 \
+	--data-parallel \
+	--train-time 39  \
+	>> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchensMultiScale.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 16 \
+        --data-parallel \
+        --train-time 40  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchensMultiScale.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 4 16 \
+        --data-parallel \
+        --train-time 41  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+# run L2 loss ablatation 
+apptainer run --nv \
+        --pwd /multiscale_KD3A \
+        --bind /scratch/e1036284/I3D-feature-pretrain/:/multiscale_KD3A/data/I3D-feature-pretrain \
+        --bind /home/svu/e1036284/EpicKitchensMultiScale.yaml:/multiscale_KD3A/config/EpicKitchensMultiScale.yaml \
+        $container --base-path /home/svu/e1036284 --config EpicKitchensMultiScale.yaml \
+	--target-domain P22 --source-domains P08 P01 \
+        --scales 1 4 16 \
+        --remove-l2-loss \
+        --data-parallel \
+        --train-time 42  \
+        >> stdout.$PBS_JOBID 2>> stderr.$PBS_JOBID
+
+EOF

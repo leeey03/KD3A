@@ -35,7 +35,7 @@ class EpicI3DDataset(Dataset):
         zero_count = 0
         loaded_count = 0
         feat_list = []
-        feat_path = ""
+        
         for i in range(frame_idx - half_window, frame_idx + (total_window - half_window)):
             if i < 1:
             # pad with zeros for frames before the start
